@@ -16,14 +16,20 @@ export const PALETTE = {
   lavender: '#b8a9e3',
   green: '#7bc950',
   sand: '#f3d9b1',
+  // materials
+  limestone: '#d9d3c6',
+  stone: '#c8c4bd',
+  brick: '#b0715a',
+  copper: '#6f9e8e',
+  timber: '#8a5a3c',
+  glass: '#1a2630',
   // scene
-  skyTop: '#5f7482',
-  skyHorizon: '#c9cdd3',
-  skyGlow: '#f4c9a0',
-  ground: '#646b72',
-  road: '#46494c',
-  glassLow: '#2e3a45',
-  glassHigh: '#7f97a8',
+  skyTop: '#4a86a4',
+  skyHorizon: '#e6ddd0',
+  skyGlow: '#f7c48f',
+  ground: '#cbc8c2',
+  groundLine: '#c3bfb8',
+  platformSide: '#4c5c68',
 };
 
 export const ACTIVITY_COLOR: Record<AgentActivity, string> = {

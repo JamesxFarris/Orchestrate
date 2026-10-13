@@ -33,9 +33,9 @@ export interface CityLayout {
 export const HQ_ACCENT = PALETTE.sand;
 
 
-const CIRCLE_RADIUS = 17;
-const DISTRICT_RADIUS = 38;
-const SPACING = 9;
+const CIRCLE_RADIUS = 22;
+const DISTRICT_RADIUS = 47;
+const SPACING = 11.5;
 
 /**
  * Downtown HQ in the middle, the Tech Circle ring around it with each squad lead standing on the rim
@@ -57,7 +57,7 @@ export function layoutCity(team: Team): CityLayout {
   if (master) place(master, 0, 0, HQ_ACCENT);
   hq.filter((r) => r !== master).forEach((r, i, arr) => {
     const a = angleOf(0) + Math.PI / n + (i * 2 * Math.PI) / Math.max(arr.length, 1);
-    place(r, Math.cos(a) * 10, Math.sin(a) * 10, HQ_ACCENT);
+    place(r, Math.cos(a) * 14.5, Math.sin(a) * 14.5, HQ_ACCENT);
   });
 
   team.squads.forEach((squad, i) => {

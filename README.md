@@ -69,6 +69,21 @@ Squads, roles, models, effort, budgets, test commands and policy all live in a t
    - **Merge:** after each merge the full suite runs on the integration branch, and a regression is rolled back.
 7. **Isolation.** Every task runs in its own git worktree. Work lands on `orch/run-<id>`. **`main` is never touched or pushed.** You merge it yourself.
 
+## City models
+
+Each role kind occupies a skyscraper from `Models/buildings.blend`, converted to a 2.9 MB meshopt-compressed GLB at `packages/city/public/models/buildings.glb`. The conversion script, [tools/export_buildings.py](tools/export_buildings.py), applies the following:
+
+- Uprights each model and normalizes it to unit height.
+- Reduces materials to body, glass and trim.
+
+At runtime the city restyles those materials:
+
+- **Body:** limestone or platinum.
+- **Trim:** squad accent.
+- **Glass:** reflective, lighting up floor by floor in the agent's activity color.
+
+The role-to-model mapping and target heights are set in [archetypes.ts](packages/city/src/scene/archetypes.ts).
+
 ## Layout
 
 ```

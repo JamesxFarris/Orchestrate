@@ -27,15 +27,15 @@ export function TechCircle({ layout }: { layout: CityLayout }) {
 
   return (
     <group>
-      <mesh rotation-x={-Math.PI / 2} position-y={0.05}>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.004}>
         <ringGeometry args={[r - 0.35, r + 0.35, 128]} />
-        <meshBasicMaterial ref={ring} toneMapped={false} />
+        <meshBasicMaterial ref={ring} toneMapped={false} polygonOffset polygonOffsetFactor={-8} polygonOffsetUnits={-8} />
       </mesh>
-      <mesh rotation-x={-Math.PI / 2} position-y={0.02}>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.002}>
         <circleGeometry args={[r - 0.25, 96]} />
-        <meshBasicMaterial ref={inner} color={PALETTE.cerulean} transparent opacity={0.12} toneMapped={false} />
+        <meshBasicMaterial ref={inner} color={PALETTE.cerulean} transparent opacity={0.12} depthWrite={false} toneMapped={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
       </mesh>
-      <Text position={[0, 0.08, r + 2]} rotation-x={-Math.PI / 2} fontSize={1.1} letterSpacing={0.3} color={active ? PALETTE.cerulean : PALETTE.onyx} outlineWidth={0.04} outlineColor={PALETTE.platinum}>
+      <Text position={[0, 0.06, r + 2]} rotation-x={-Math.PI / 2} fontSize={1.1} letterSpacing={0.3} color={active ? PALETTE.cerulean : PALETTE.onyx} outlineWidth={0.04} outlineColor={PALETTE.platinum}>
         TECH CIRCLE{active ? ' · IN SESSION' : ''}
       </Text>
       {active &&
