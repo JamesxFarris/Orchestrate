@@ -1,0 +1,26 @@
+{
+  "name": "orchestrate",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/core",
+    "packages/server",
+    "packages/mcp",
+    "packages/city"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/city/tsconfig.json",
+    "daemon": "node --disable-warning=ExperimentalWarning --import tsx packages/server/src/main.ts",
+    "mcp": "node --disable-warning=ExperimentalWarning --import tsx packages/mcp/src/main.ts",
+    "city": "npm run dev -w @orchestrate/city"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.4"
+  }
+}

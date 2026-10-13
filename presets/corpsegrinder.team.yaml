@@ -1,0 +1,101 @@
+# CorpseGrinder: wave killer (Vampire Survivors x Enter the Gungeon), TypeScript + Vite + Vitest.
+# Ownership mirrors the repo layout: src/sim, src/data, src/core, src/render, src/art, tests/, docs/.
+version: 1
+
+project:
+  name: CorpseGrinder
+  language: TypeScript
+  repoPath: ../../CorpseGrinder        # relative to this file
+  defaultBranch: master
+  description: >-
+    A top-down wave-survival shooter: Vampire Survivors' escalating hordes, auto-weapons and level-up
+    choices crossed with Enter the Gungeon's guns, bullet patterns and cathedral arenas. Fixed-step
+    simulation in src/sim, data tables in src/data, canvas rendering in src/render.
+  referenceDirs:
+    - public/art/**          # ripped sprites (gitignored, local only)
+    - tools/**               # the rip scripts document the source asset layouts
+  # Decompiled game projects outside the repo, readable by every agent (never writable):
+  externalReferenceDirs: []
+  #  - C:/DOA-assets/vs/ExportedProject/Assets
+  #  - C:/DOA-assets/gungeon/ExportedProject/Assets
+  testGlobs:
+    - "tests/**/*.test.ts"
+  linkDirs:
+    - node_modules
+
+defaults:
+  model: claude-opus-5-5
+  effort: high
+  maxTurns: 40
+  maxBudgetUsd: 4
+  timeoutMs: 1200000
+
+gates:
+  typecheck: npx tsc --noEmit
+  test: npx vitest run
+  testFiles: npx vitest run {files}
+  full: npx vitest run
+  timeoutMs: 600000
+
+policy:
+  maxRetries: 2
+  maxChangedLines: 400
+  circleRevisionRounds: 2
+  requireHumanApproval: true
+  maxParallel: 3
+
+squads:
+  - id: gameplay
+    name: Gameplay
+    color: "#e4572e"
+    mission: Simulation rules — player, weapons, bullets, enemies, waves, combat, pickups, progression — and the data tables that tune them.
+    owns: ["src/sim/**", "src/data/**"]
+    testDirs: ["tests/**"]
+  - id: engine
+    name: Core Engine
+    color: "#1985a1"
+    mission: Fixed-step loop, input, events, spatial grid, pooling, RNG, math, and app bootstrap.
+    owns: ["src/core/**", "src/main.ts"]
+    testDirs: ["tests/**"]
+  - id: render
+    name: Render & UI
+    color: "#f2a541"
+    mission: Canvas renderer, tilemap, FX, HUD, level-up choice UI, icons, and the art pack / sprite resolver.
+    owns: ["src/render/**", "src/art/**", "index.html"]
+    testDirs: ["tests/**"]
+  - id: research
+    name: Research
+    color: "#7fb7be"
+    mission: Study the reference games (ripped assets, decompiled sources) and write precise mechanic specs other squads build from.
+    owns: ["docs/**"]
+
+roles:
+  # --- HQ -----------------------------------------------------------------
+  - { id: head-of-eng, title: Head of Engineering, kind: master, tier: exec }
+  - { id: architect, title: Engineering Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
+  - { id: head-of-qa, title: Head of QA, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
+
+  # --- Gameplay -------------------------------------------------------------
+  - { id: gameplay-lead, title: Gameplay Lead, kind: lead, tier: lead, squad: gameplay, reportsTo: head-of-eng }
+  - { id: gameplay-dev, title: Gameplay Developer, kind: dev, tier: senior, squad: gameplay, reportsTo: gameplay-lead }
+  - { id: gameplay-qa, title: Gameplay QA Engineer, kind: qa, tier: ic, squad: gameplay, reportsTo: head-of-qa }
+
+  # --- Core Engine ----------------------------------------------------------
+  - { id: engine-lead, title: Engine Lead, kind: lead, tier: lead, squad: engine, reportsTo: head-of-eng }
+  - { id: engine-dev, title: Engine Developer, kind: dev, tier: senior, squad: engine, reportsTo: engine-lead }
+  - { id: engine-qa, title: Engine QA Engineer, kind: qa, tier: ic, squad: engine, reportsTo: head-of-qa }
+
+  # --- Render & UI ------------------------------------------------------------
+  - { id: render-lead, title: Render Lead, kind: lead, tier: lead, squad: render, reportsTo: head-of-eng }
+  - { id: render-dev, title: Render Developer, kind: dev, tier: senior, squad: render, reportsTo: render-lead }
+  - { id: render-qa, title: Render QA Engineer, kind: qa, tier: ic, squad: render, reportsTo: head-of-qa }
+
+  # --- Research -------------------------------------------------------------
+  - { id: research-lead, title: Research Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-analyst, title: Reverse-Engineering Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
+
+  # --- Optional chapters (flip enabled: true to add them to the city) --------
+  - { id: head-of-product, title: Head of Product, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-design, title: Head of Design, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
+
+techCircle: [head-of-eng, architect, head-of-qa, gameplay-lead, engine-lead, render-lead, research-lead]

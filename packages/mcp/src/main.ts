@@ -1,0 +1,165 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { RunState } from '@orchestrate/shared';
+import { z } from 'zod';
+
+/** Thin MCP front door: Claude Code talks to the Master through the local Orchestrate daemon. */
+const BASE = (process.env.ORCH_URL ?? 'http://127.0.0.1:4317').replace(/\/$/, '');
+const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+
+async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error(`Orchestrate daemon is not reachable at ${BASE}. Start it with "npm run daemon" (or "npm run daemon -- --demo").`);
+  }
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `${method} ${path} -> HTTP ${res.status}`);
+  return data;
+}
+
+const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
+
+function describeRun(r: RunState, verbose = false): string {
+  const lines = [
+    `Run ${r.id} — ${r.status}${r.detail ? ` (${r.detail})` : ''}`,
+    `Request: ${r.prompt.slice(0, 300)}`,
+    `Cost so far: $${r.costUsd.toFixed(2)}`,
+  ];
+  if (r.integrationBranch) lines.push(`Integration branch: ${r.integrationBranch}`);
+  if (r.plan) lines.push('', `Plan: ${r.plan.summary}`);
+  for (const t of r.tasks) {
+    lines.push(`- [${t.status}] ${t.contract.id} (${t.contract.squad}/${t.contract.kind}): ${t.contract.title}${t.detail ? ` — ${t.detail}` : ''}`);
+    if (verbose) {
+      lines.push(`    objective: ${t.contract.objective}`);
+      lines.push(`    write scope: ${t.contract.writeScope.join(', ')}`);
+      if (t.contract.testFiles.length) lines.push(`    tests: ${t.contract.testFiles.join(', ')}`);
+      lines.push(`    acceptance: ${t.contract.acceptanceCriteria.join(' | ')}`);
+      if (t.contract.dependsOn.length) lines.push(`    depends on: ${t.contract.dependsOn.join(', ')}`);
+    }
+  }
+  if (verbose && r.plan?.risks.length) lines.push('', `Risks: ${r.plan.risks.join(' | ')}`);
+  if (r.summary) lines.push('', `Report: ${r.summary}`);
+  if (r.status === 'awaiting_approval') lines.push('', 'Waiting for CTO approval: call orchestrate_approve to start execution, or orchestrate_cancel.');
+  return lines.join('\n');
+}
+
+const server = new McpServer({ name: 'orchestrate', version: '0.1.0' });
+
+server.registerTool(
+  'orchestrate_submit',
+  {
+    title: 'Send a request to the Master',
+    description:
+      'Hand a feature request or bug to the engineering team. The Head of Engineering plans it into scoped tasks, the Tech Circle reviews, and (after approval) squads implement with tests first. Watch progress in the City at the daemon URL.',
+    inputSchema: {
+      prompt: z.string().min(3).describe('What you want built or fixed, with any constraints.'),
+      autoApprove: z.boolean().optional().describe('Skip the human plan-approval gate. Default false.'),
+      baseRef: z.string().optional().describe('Branch/commit to build on. Defaults to the project default branch.'),
+    },
+  },
+  async (args) => {
+    const run = await api<RunState>('POST', '/api/runs', args);
+    return text(`Submitted run ${run.id}. City: ${BASE}\nUse orchestrate_wait to follow it, then orchestrate_plan to review the plan.`);
+  },
+);
+
+server.registerTool(
+  'orchestrate_status',
+  {
+    title: 'Run status',
+    description: 'Status of one run (with its task board), or the most recent runs when no id is given.',
+    inputSchema: { runId: z.string().optional() },
+  },
+  async ({ runId }) => {
+    if (runId) return text(describeRun(await api<RunState>('GET', `/api/runs/${encodeURIComponent(runId)}`)));
+    const runs = await api<RunState[]>('GET', '/api/runs');
+    return text(runs.length ? runs.slice(0, 10).map((r) => `${r.id}  ${r.status.padEnd(17)} ${r.prompt.slice(0, 80)}`).join('\n') : 'No runs yet.');
+  },
+);
+
+server.registerTool(
+  'orchestrate_plan',
+  {
+    title: 'Show the plan',
+    description: 'Full task contracts for a run: objectives, write scopes, test files, acceptance criteria, dependencies.',
+    inputSchema: { runId: z.string() },
+  },
+  async ({ runId }) => text(describeRun(await api<RunState>('GET', `/api/runs/${encodeURIComponent(runId)}`), true)),
+);
+
+server.registerTool(
+  'orchestrate_wait',
+  {
+    title: 'Wait for a run',
+    description: 'Block until the run needs approval, finishes, or the timeout passes, then return its status.',
+    inputSchema: { runId: z.string(), timeoutSeconds: z.number().int().min(5).max(600).optional() },
+  },
+  async ({ runId, timeoutSeconds = 120 }) => {
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    let run = await api<RunState>('GET', `/api/runs/${encodeURIComponent(runId)}`);
+    while (!TERMINAL.has(run.status) && run.status !== 'awaiting_approval' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      run = await api<RunState>('GET', `/api/runs/${encodeURIComponent(runId)}`);
+    }
+    return text(describeRun(run));
+  },
+);
+
+server.registerTool(
+  'orchestrate_approve',
+  {
+    title: 'Approve a plan (CTO gate)',
+    description: 'Approve a run that is awaiting approval so squads start executing.',
+    inputSchema: { runId: z.string() },
+  },
+  async ({ runId }) => {
+    await api('POST', `/api/runs/${encodeURIComponent(runId)}/approve`);
+    return text(`Approved ${runId}. Execution started.`);
+  },
+);
+
+server.registerTool(
+  'orchestrate_cancel',
+  {
+    title: 'Cancel a run',
+    description: 'Stop a run. Agents are aborted; merged work stays on the integration branch.',
+    inputSchema: { runId: z.string() },
+  },
+  async ({ runId }) => {
+    await api('POST', `/api/runs/${encodeURIComponent(runId)}/cancel`);
+    return text(`Cancelled ${runId}.`);
+  },
+);
+
+server.registerTool(
+  'orchestrate_team',
+  {
+    title: 'Org chart',
+    description: 'The engineering org: squads, roles, reporting lines and the Tech Circle.',
+    inputSchema: {},
+  },
+  async () => {
+    const team = await api<{
+      project: { name: string };
+      squads: { id: string; name: string; mission: string }[];
+      roles: { id: string; title: string; squad?: string; reportsTo?: string }[];
+      techCircle: string[];
+    }>('GET', '/api/team');
+    const hq = team.roles.filter((r) => !r.squad);
+    const lines = [`${team.project.name} engineering`, '', 'HQ:', ...hq.map((r) => `  ${r.title} (${r.id})`)];
+    for (const s of team.squads) {
+      lines.push('', `${s.name} squad — ${s.mission}`);
+      for (const r of team.roles.filter((x) => x.squad === s.id)) lines.push(`  ${r.title} (${r.id}) → reports to ${r.reportsTo ?? '—'}`);
+    }
+    lines.push('', `Tech Circle: ${team.techCircle.join(', ')}`);
+    return text(lines.join('\n'));
+  },
+);
+
+await server.connect(new StdioServerTransport());
