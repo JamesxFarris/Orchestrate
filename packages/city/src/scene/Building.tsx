@@ -66,7 +66,8 @@ const auraFragment = /* glsl */ `
   uniform float uTime;
   varying float vH;
   void main() {
-    float fade = pow(1.0 - vH, 1.6);
+    // clamp: on D3D pow() of a tiny negative (interpolation overshoot at the rim) is NaN, and bloom spreads NaN everywhere
+    float fade = pow(clamp(1.0 - vH, 0.0, 1.0), 1.6);
     float ripple = 0.75 + 0.25 * sin(vH * 24.0 - uTime * 3.0);
     gl_FragColor = vec4(uColor * 1.6, fade * ripple * uOpacity);
   }
@@ -197,7 +198,7 @@ export function Building({ p }: { p: Placement }) {
       <primitive object={object} position-y={PLAZA_Y} scale={arch.scale} />
 
       {/* light column (only visible while active) */}
-      <mesh position-y={PLAZA_Y + arch.top * 0.6} material={aura} renderOrder={2}>
+      <mesh visible={new URLSearchParams(location.search).get('aura') !== '0'} position-y={PLAZA_Y + arch.top * 0.6} material={aura} renderOrder={2}>
         <cylinderGeometry args={[arch.footprint * 0.62, arch.footprint * 0.62, arch.top * 1.2, 40, 1, true]} />
       </mesh>
 

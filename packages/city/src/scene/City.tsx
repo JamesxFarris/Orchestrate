@@ -41,7 +41,8 @@ function Sky() {
           void main() {
             float h = clamp(vDir.y, -0.2, 1.0);
             vec3 col = mix(uHorizon, uTop, pow(max(h, 0.0), 0.32));
-            float sun = max(dot(normalize(vec3(vDir.x, 0.0, vDir.z)), normalize(vec3(uSun.x, 0.0, uSun.z))), 0.0);
+            vec2 hz = vec2(vDir.x, vDir.z);
+            float sun = max(dot(hz / max(length(hz), 1e-4), normalize(uSun.xz)), 0.0);
             col = mix(col, uGlow, pow(sun, 4.0) * (1.0 - smoothstep(0.0, 0.4, h)) * 0.85);
             col = mix(col, uHorizon * 0.92, smoothstep(0.0, -0.2, h));
             gl_FragColor = vec4(col, 1.0);
@@ -84,6 +85,9 @@ function Environment() {
   return null;
 }
 
+const DEBUG = new URLSearchParams(location.search);
+const off = (k: string) => DEBUG.get(k) === '0';
+
 export function City() {
   const team = useCity((s) => s.team);
   const select = useCity((s) => s.select);
@@ -101,8 +105,8 @@ export function City() {
     >
       <color attach="background" args={[PALETTE.skyHorizon]} />
       <fogExp2 attach="fog" args={[PALETTE.skyHorizon, 0.0016]} />
-      <Sky />
-      <Environment />
+      {!off('sky') && <Sky />}
+      {!off('env') && <Environment />}
       <StaticShadows />
       <hemisphereLight args={['#dde8ee', '#6f675d', 0.55]} />
       <directionalLight
@@ -131,7 +135,7 @@ export function City() {
               <Building key={b.role.id} p={b} />
             ))}
           </Suspense>
-          <Links layout={layout} />
+          {!off('links') && <Links layout={layout} />}
           <Trails layout={layout} />
         </>
       )}
@@ -145,10 +149,12 @@ export function City() {
         maxDistance={260}
         target={[0, 9, 0]}
       />
+      {!off('fx') && (
       <EffectComposer multisampling={4}>
         <Bloom mipmapBlur intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />
         <Vignette offset={0.45} darkness={0.22} />
       </EffectComposer>
+      )}
     </Canvas>
   );
 }

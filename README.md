@@ -84,6 +84,20 @@ At runtime the city restyles those materials:
 
 The role-to-model mapping and target heights are set in [archetypes.ts](packages/city/src/scene/archetypes.ts).
 
+### Troubleshooting the city
+
+Add these query flags to the city's URL to turn individual effects off:
+
+| Flag | Turns off |
+|---|---|
+| `?fx=0` | post-processing (bloom/vignette) |
+| `?sky=0` | sky dome |
+| `?env=0` | environment reflections |
+| `?links=0` | live data links |
+| `?aura=0` | light columns |
+
+Flags combine, for example `?fx=0&aura=0`. A black canvas with only labels showing almost always means a shader produced NaN pixels, which bloom then spreads across the whole frame. Software renderers hide this, so check on a real GPU (D3D11/ANGLE).
+
 ## Layout
 
 ```
