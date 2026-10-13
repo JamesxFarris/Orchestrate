@@ -2,21 +2,22 @@ import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { CityLayout } from '../layout.ts';
+import { PALETTE } from '../palette.ts';
 import { useCity, type Trail } from '../store.ts';
 
 const DURATION = 1.8;
 const REASON_COLOR: Record<string, string> = {
-  'acceptance tests are red': '#22d3ee',
-  'code review': '#a78bfa',
-  escalation: '#ef4444',
-  merged: '#22c55e',
+  'acceptance tests are red': PALETTE.ceruleanBright,
+  'code review': PALETTE.lavender,
+  escalation: PALETTE.vermilion,
+  merged: PALETTE.green,
 };
 
 /** A comet that arcs from one tower to another when work changes hands. */
 function Comet({ trail, layout }: { trail: Trail; layout: CityLayout }) {
   const head = useRef<THREE.Mesh>(null);
   const tail = useRef<THREE.Line>(null);
-  const color = new THREE.Color(REASON_COLOR[trail.reason] ?? '#fbbf24').multiplyScalar(3);
+  const color = new THREE.Color(REASON_COLOR[trail.reason] ?? PALETTE.amber).multiplyScalar(3);
 
   const curve = useMemo(() => {
     const a = layout.byId.get(trail.from);

@@ -1,3 +1,5 @@
+import { PALETTE } from './palette.ts';
+import { archetypeFor, type Archetype } from './scene/archetypes.ts';
 import type { Team, TeamRole, TeamSquad } from './store.ts';
 
 export interface Placement {
@@ -6,6 +8,7 @@ export interface Placement {
   z: number;
   height: number;
   width: number;
+  archetype: Archetype;
   /** Accent colour: squad colour, or HQ gold. */
   accent: string;
   squad?: TeamSquad;
@@ -27,14 +30,12 @@ export interface CityLayout {
   circleRadius: number;
 }
 
-export const HQ_ACCENT = '#fcd34d';
+export const HQ_ACCENT = PALETTE.sand;
 
-const HEIGHT: Record<TeamRole['tier'], number> = { exec: 32, principal: 22, lead: 17, senior: 13, ic: 10 };
-const WIDTH: Record<TeamRole['tier'], number> = { exec: 5.2, principal: 4.4, lead: 4.2, senior: 3.8, ic: 3.6 };
 
-const CIRCLE_RADIUS = 14;
-const DISTRICT_RADIUS = 34;
-const SPACING = 7;
+const CIRCLE_RADIUS = 17;
+const DISTRICT_RADIUS = 38;
+const SPACING = 9;
 
 /**
  * Downtown HQ in the middle, the Tech Circle ring around it with each squad lead standing on the rim
@@ -45,8 +46,10 @@ export function layoutCity(team: Team): CityLayout {
   const districts: District[] = [];
   const n = Math.max(team.squads.length, 1);
   const angleOf = (i: number) => -Math.PI / 2 - Math.PI / 4 + (i * 2 * Math.PI) / n;
-  const place = (role: TeamRole, x: number, z: number, accent: string, squad?: TeamSquad) =>
-    buildings.push({ role, x, z, height: HEIGHT[role.tier], width: WIDTH[role.tier], accent, squad });
+  const place = (role: TeamRole, x: number, z: number, accent: string, squad?: TeamSquad) => {
+    const archetype = archetypeFor(role);
+    buildings.push({ role, x, z, height: archetype.height, width: archetype.footprint, archetype, accent, squad });
+  };
 
   // HQ: master in the centre, other squad-less roles in an inner ring between the districts.
   const hq = team.roles.filter((r) => !r.squad);
@@ -54,7 +57,7 @@ export function layoutCity(team: Team): CityLayout {
   if (master) place(master, 0, 0, HQ_ACCENT);
   hq.filter((r) => r !== master).forEach((r, i, arr) => {
     const a = angleOf(0) + Math.PI / n + (i * 2 * Math.PI) / Math.max(arr.length, 1);
-    place(r, Math.cos(a) * 7.5, Math.sin(a) * 7.5, HQ_ACCENT);
+    place(r, Math.cos(a) * 10, Math.sin(a) * 10, HQ_ACCENT);
   });
 
   team.squads.forEach((squad, i) => {

@@ -148,7 +148,7 @@ export function Ticker() {
   return (
     <div className="ticker" aria-live="polite">
       {lines.map((l, i) => (
-        <div key={l.key} className="ticker__line" style={{ opacity: 0.35 + (0.65 * (i + 1)) / lines.length }}>
+        <div key={l.key} className="ticker__line" style={{ opacity: 0.6 + (0.4 * (i + 1)) / lines.length }}>
           {l.text}
         </div>
       ))}

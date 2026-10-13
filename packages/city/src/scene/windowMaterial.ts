@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PALETTE } from '../palette.ts';
 
 const vertex = /* glsl */ `
   varying vec3 vPos;
@@ -14,19 +15,29 @@ const vertex = /* glsl */ `
 `;
 
 /**
- * Procedural office windows. `uLit` is the fraction of windows switched on (0 = lights off),
- * `uColor` their colour, `uPulse` a red alarm pulse, `uFlash` a green merge flash.
+ * Lit facade with procedural windows for box and cylindrical (round / hex) segments.
+ * `uLit` = fraction of windows switched on, `uColor` their colour, `uPulse` an alarm pulse,
+ * `uFlash` the merge flash. The body is shaded by a warm low sun plus a sky fill.
  */
 const fragment = /* glsl */ `
-  uniform vec3 uSize;
+  uniform vec3 uSize;       // width, height, depth (cylinders: diameter, height, diameter)
+  uniform float uShape;     // 0 = box, 1 = cylinder
+  uniform float uBaseY;     // segment's height above ground, so floors line up across tiers
+  uniform vec3 uBody;
+  uniform vec3 uGlassLow;
+  uniform vec3 uGlassHigh;
   uniform vec3 uColor;
   uniform vec3 uAccent;
+  uniform vec3 uFlashColor;
+  uniform vec3 uLightDir;
   uniform float uLit;
   uniform float uTime;
   uniform float uSeed;
   uniform float uPulse;
   uniform float uFlash;
   uniform float uHover;
+  uniform float uFloorH;
+  uniform float uColW;
   varying vec3 vPos;
   varying vec3 vNormal;
   #include <fog_pars_fragment>
@@ -36,51 +47,77 @@ const fragment = /* glsl */ `
   }
 
   void main() {
-    vec3 n = abs(vNormal);
-    vec3 body = vec3(0.028, 0.04, 0.07);
+    vec3 n = normalize(vNormal);
+    float diffuse = max(dot(n, normalize(uLightDir)), 0.0);
+    float sky = 0.5 + 0.5 * n.y;
+    vec3 body = uBody * (0.62 + 0.55 * diffuse + 0.18 * sky);
     float v = vPos.y + uSize.y * 0.5;
 
-    if (n.y > 0.5) {
-      gl_FragColor = vec4(body * 0.7, 1.0);
+    if (n.y > 0.6) {
+      gl_FragColor = vec4(uBody * 0.95 + uAccent * 0.08 * (1.0 + uHover), 1.0);
       #include <fog_fragment>
       return;
     }
 
-    bool sideX = n.x > 0.5;
-    float faceW = sideX ? uSize.z : uSize.x;
-    float u = (sideX ? vPos.z : vPos.x) + faceW * 0.5;
-    float faceId = sideX ? (vNormal.x > 0.0 ? 1.0 : 2.0) : (vNormal.z > 0.0 ? 3.0 : 4.0);
+    float faceW;
+    float u;
+    float faceId;
+    if (uShape > 0.5) {
+      float r = uSize.x * 0.5;
+      faceW = 6.2831853 * r;
+      u = (atan(vPos.z, vPos.x) + 3.1415927) * r;
+      faceId = 1.0;
+    } else {
+      bool sideX = abs(n.x) > 0.5;
+      faceW = sideX ? uSize.z : uSize.x;
+      u = (sideX ? vPos.z : vPos.x) + faceW * 0.5;
+      faceId = sideX ? (n.x > 0.0 ? 1.0 : 2.0) : (n.z > 0.0 ? 3.0 : 4.0);
+    }
 
-    float floorH = 0.95;
-    float colW = 0.72;
-    vec2 cell = vec2(floor(u / colW), floor(v / floorH));
-    vec2 f = vec2(fract(u / colW), fract(v / floorH));
-    float win = step(0.2, f.x) * step(f.x, 0.8) * step(0.28, f.y) * step(f.y, 0.78);
-    if (v < 1.4 || v > uSize.y - 0.7 || u < 0.35 || u > faceW - 0.35) win = 0.0;
+    float gy = v + uBaseY;
+    vec2 cell = vec2(floor(u / uColW), floor(gy / uFloorH));
+    vec2 f = vec2(fract(u / uColW), fract(gy / uFloorH));
+    float win = step(0.16, f.x) * step(f.x, 0.84) * step(0.24, f.y) * step(f.y, 0.8);
+    if (gy < 1.3 || v > uSize.y - 0.55) win = 0.0;
+    if (uShape < 0.5 && (u < 0.3 || u > faceW - 0.3)) win = 0.0;
 
     float h = hash(cell + faceId * 17.0);
     float drift = hash(cell + faceId * 3.0 + floor(uTime * 0.6 + h * 9.0));
     float lit = mix(step(h, uLit), step(drift, uLit), 0.22);
-    float pulse = mix(1.0, 0.45 + 0.55 * (0.5 + 0.5 * sin(uTime * 7.0)), uPulse);
+    float pulse = mix(1.0, 0.5 + 0.5 * (0.5 + 0.5 * sin(uTime * 7.0)), uPulse);
 
-    vec3 offWin = vec3(0.05, 0.07, 0.11) + 0.025 * h;
-    vec3 onWin = uColor * (1.5 + 1.3 * h) * pulse;
-    vec3 col = mix(offWin, onWin, lit);
-    col = mix(col, vec3(0.2, 1.0, 0.45) * 2.6, uFlash);
+    // Unlit glass reflects the dusk sky: darker low, brighter high, brighter on the sun side.
+    vec3 glass = mix(uGlassLow, uGlassHigh, clamp(gy / 34.0, 0.0, 1.0)) * (0.75 + 0.35 * diffuse) + 0.05 * h;
+    vec3 onWin = uColor * (1.55 + 1.1 * h) * pulse;
+    vec3 col = mix(glass, onWin, lit);
+    col = mix(col, uFlashColor * 2.4, uFlash);
 
-    // Accent pinstripes at the corners and a crown band at the top.
-    float edge = 1.0 - smoothstep(0.0, 0.08, min(u, faceW - u));
-    float crown = smoothstep(uSize.y - 0.6, uSize.y - 0.45, v) * (1.0 - smoothstep(uSize.y - 0.3, uSize.y - 0.15, v));
-    vec3 accent = uAccent * (0.35 + 0.9 * uLit + 0.6 * uHover);
+    // Accent mullions at the corners and a crown band under the roofline.
+    float edge = uShape > 0.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.1, min(u, faceW - u));
+    float crown = smoothstep(uSize.y - 0.5, uSize.y - 0.38, v) * (1.0 - smoothstep(uSize.y - 0.22, uSize.y - 0.1, v));
+    vec3 accent = uAccent * (0.55 + 0.9 * uLit + 0.7 * uHover);
 
-    vec3 outc = mix(body + body * 0.5 * (v / uSize.y), col, win);
-    outc += accent * max(edge * 0.6, crown);
+    vec3 outc = mix(body, col, win);
+    outc = mix(outc, accent, clamp(max(edge * 0.75, crown), 0.0, 1.0));
     gl_FragColor = vec4(outc, 1.0);
     #include <fog_fragment>
   }
 `;
 
-export function createWindowMaterial(size: [number, number, number], accent: string, seed: number): THREE.ShaderMaterial {
+export interface FacadeOptions {
+  size: [number, number, number];
+  shape: 'box' | 'cylinder';
+  baseY: number;
+  accent: string;
+  seed: number;
+  body?: string;
+  floorH?: number;
+  colW?: number;
+}
+
+export const SUN_DIR = new THREE.Vector3(-0.55, 0.45, 0.7).normalize();
+
+export function createFacadeMaterial(o: FacadeOptions): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: vertex,
     fragmentShader: fragment,
@@ -89,15 +126,24 @@ export function createWindowMaterial(size: [number, number, number], accent: str
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
       {
-        uSize: { value: new THREE.Vector3(...size) },
-        uColor: { value: new THREE.Color('#fbbf24') },
-        uAccent: { value: new THREE.Color(accent) },
+        uSize: { value: new THREE.Vector3(...o.size) },
+        uShape: { value: o.shape === 'cylinder' ? 1 : 0 },
+        uBaseY: { value: o.baseY },
+        uBody: { value: new THREE.Color(o.body ?? PALETTE.onyx) },
+        uGlassLow: { value: new THREE.Color(PALETTE.glassLow) },
+        uGlassHigh: { value: new THREE.Color(PALETTE.glassHigh) },
+        uColor: { value: new THREE.Color(PALETTE.amber) },
+        uAccent: { value: new THREE.Color(o.accent) },
+        uFlashColor: { value: new THREE.Color(PALETTE.green) },
+        uLightDir: { value: SUN_DIR.clone() },
         uLit: { value: 0 },
         uTime: { value: 0 },
-        uSeed: { value: seed },
+        uSeed: { value: o.seed },
         uPulse: { value: 0 },
         uFlash: { value: 0 },
         uHover: { value: 0 },
+        uFloorH: { value: o.floorH ?? 0.95 },
+        uColW: { value: o.colW ?? 0.72 },
       },
     ]),
   });

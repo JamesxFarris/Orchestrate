@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+export { ACTIVITY_COLOR, TASK_COLOR } from './palette.ts';
 import type { AgentActivity, AgentSnapshot, OrchestrateEvent, RunState, TaskStatus } from '@orchestrate/shared';
 
 export interface TeamRole {
@@ -166,13 +167,6 @@ export const useCity = create<CityState>((set, get) => ({
   },
 }));
 
-export const ACTIVITY_COLOR: Record<AgentActivity, string> = {
-  idle: '#1e293b',
-  working: '#fbbf24',
-  testing: '#22d3ee',
-  reviewing: '#a78bfa',
-  blocked: '#ef4444',
-};
 
 export const ACTIVITY_LABEL: Record<AgentActivity, string> = {
   idle: 'Idle',
@@ -182,17 +176,6 @@ export const ACTIVITY_LABEL: Record<AgentActivity, string> = {
   blocked: 'Blocked',
 };
 
-export const TASK_COLOR: Record<TaskStatus, string> = {
-  pending: '#475569',
-  red: '#22d3ee',
-  in_progress: '#fbbf24',
-  verifying: '#22d3ee',
-  review: '#a78bfa',
-  merged: '#22c55e',
-  escalated: '#ef4444',
-  failed: '#ef4444',
-  skipped: '#64748b',
-};
 
 export const TASK_LABEL: Record<TaskStatus, string> = {
   pending: 'pending',
