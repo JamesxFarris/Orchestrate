@@ -84,6 +84,19 @@ At runtime the city restyles those materials:
 
 The role-to-model mapping and target heights are set in [archetypes.ts](packages/city/src/scene/archetypes.ts).
 
+### The park
+
+The city sits in a park, and its trees and paths carry information:
+
+- **Task trees:** each task in the current run is a tree on its district's side facing HQ.
+  - It grows as the task moves through tests, build and review.
+  - It blooms green on merge.
+  - It goes bare and red-tinged if the task escalates or fails.
+  - A ring on the lawn shows its status, and clicking the tree opens the task.
+- **City glow:** when a run completes, a wave of green light rolls out from HQ across the lawn and trees.
+- **Path pulses:** every handoff sends light along the footpaths between the two agents' towers.
+- **History:** each finished run leaves one landmark tree in each district it touched, lush if the work merged and weathered if it escalated. There are at most 12 per district; after that the grove grows bigger rather than more crowded.
+
 ### Troubleshooting the city
 
 Add these query flags to the city's URL to turn individual effects off:
@@ -95,6 +108,7 @@ Add these query flags to the city's URL to turn individual effects off:
 | `?env=0` | environment reflections |
 | `?links=0` | live data links |
 | `?aura=0` | light columns |
+| `?pulses=0` | path pulses |
 
 Flags combine, for example `?fx=0&aura=0`. A black canvas with only labels showing almost always means a shader produced NaN pixels, which bloom then spreads across the whole frame. Software renderers hide this, so check on a real GPU (D3D11/ANGLE).
 

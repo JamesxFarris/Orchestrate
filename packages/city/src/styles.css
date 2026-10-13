@@ -724,3 +724,27 @@ code {
   gap: 4px;
   color: var(--onyx);
 }
+
+.tag--tree {
+  gap: 8px;
+}
+.tag--tree b {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--onyx);
+  background: color-mix(in srgb, var(--accent) 40%, white);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.people span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

@@ -23,6 +23,14 @@ export const PALETTE = {
   copper: '#6f9e8e',
   timber: '#8a5a3c',
   glass: '#1a2630',
+  // park
+  grassLight: '#a5bd88',
+  grassDark: '#7d9a69',
+  canopy: ['#6f9a5b', '#7fae68', '#5d8a52', '#8cb874', '#678f58', '#94b06a'],
+  trunk: '#7a5a43',
+  path: '#dcd5c6',
+  weathered: '#9a917f',
+  bare: '#8a8073',
   // scene
   skyTop: '#4a86a4',
   skyHorizon: '#e6ddd0',

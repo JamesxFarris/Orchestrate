@@ -84,7 +84,7 @@ export function TaskBoard() {
       </div>
       <ol className="tasks">
         {run.tasks.map((t) => (
-          <li key={t.contract.id} className="task" onMouseEnter={() => highlight(t.contract.id)} onMouseLeave={() => highlight(undefined)}>
+          <li key={t.contract.id} className="task" onMouseEnter={() => highlight(t.contract.id)} onMouseLeave={() => highlight(undefined)} onClick={() => useCity.getState().selectTask(t.contract.id)} style={{ cursor: 'pointer' }}>
             <span className="task__squad" style={{ background: squadColor(t.contract.squad) }} />
             <div className="task__body">
               <div className="task__title">{t.contract.title}</div>
@@ -423,5 +423,112 @@ export function Legend() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Opens when a tree is clicked: the task behind it, who worked on it, and how it went. */
+export function TaskPanel() {
+  const id = useCity((s) => s.selectedTask);
+  const run = useCurrentRun();
+  const team = useCity((s) => s.team);
+  const events = useCity((s) => s.events);
+  const selectTask = useCity((s) => s.selectTask);
+  const task = run?.tasks.find((t) => t.contract.id === id);
+  if (!id || !task || !team) return null;
+
+  const c = task.contract;
+  const squad = team.squads.find((s) => s.id === c.squad);
+  const people = team.roles.filter((r) => r.squad === c.squad);
+  const gates = events.filter((e) => e.type === 'gate.result' && e.taskId === c.id).slice(-10);
+  const review = [...events].reverse().find((e) => e.type === 'code.review' && e.taskId === c.id);
+
+  return (
+    <aside className="panel agentpanel taskpanel">
+      <button className="panel__close" onClick={() => selectTask(undefined)} aria-label="Close">
+        ×
+      </button>
+      <div className="agent__head">
+        <span className="agent__dot" style={{ background: TASK_COLOR[task.status] }}>
+          <RoleIcon kind={c.kind === 'research' ? 'analyst' : 'dev'} size={14} />
+        </span>
+        <div>
+          <div className="agent__title">{c.title}</div>
+          <div className="muted">
+            {squad?.name ?? c.squad} · {c.kind} · {c.id}
+          </div>
+        </div>
+      </div>
+      <div className="agent__status">
+        <span className="status" style={{ ['--c' as string]: TASK_COLOR[task.status] }}>
+          {TASK_LABEL[task.status]}
+        </span>
+        {task.attempts > 1 && <span className="muted">{task.attempts} attempts</span>}
+        {task.detail && <span className="agent__summary">{task.detail}</span>}
+      </div>
+
+      <section>
+        <h4>Objective</h4>
+        <p className="contract__obj">{c.objective}</p>
+        <ul className="criteria">
+          {c.acceptanceCriteria.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section>
+        <h4>Scope</h4>
+        <div className="kv">
+          <span>Write</span>
+          <code>{c.writeScope.join('  ')}</code>
+          {c.testFiles.length > 0 && (
+            <>
+              <span>Tests</span>
+              <code>{c.testFiles.join('  ')}</code>
+            </>
+          )}
+          {c.dependsOn.length > 0 && (
+            <>
+              <span>After</span>
+              <span>{c.dependsOn.join(', ')}</span>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <h4>Team</h4>
+        <div className="people">
+          {people.map((r) => (
+            <span key={r.id}>
+              <RoleIcon kind={r.kind} size={12} /> {r.title}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {gates.length > 0 && (
+        <section>
+          <h4>Gates</h4>
+          <div className="gates">
+            {gates.map((g, i) =>
+              g.type === 'gate.result' ? (
+                <span key={i} className={`gate ${g.ok ? 'gate--ok' : 'gate--bad'}`} title={g.output}>
+                  {g.gate}
+                </span>
+              ) : null,
+            )}
+          </div>
+        </section>
+      )}
+      {review?.type === 'code.review' && (
+        <section>
+          <h4>Lead review</h4>
+          <p className="contract__obj">
+            <span className={`gate ${review.review.verdict === 'approve' ? 'gate--ok' : 'gate--bad'}`}>{review.review.verdict}</span> {review.review.notes}
+          </p>
+        </section>
+      )}
+    </aside>
   );
 }

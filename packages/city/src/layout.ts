@@ -28,13 +28,16 @@ export interface CityLayout {
   byId: Map<string, Placement>;
   districts: District[];
   circleRadius: number;
+  /** Radius of the paved central plaza (HQ + Tech Circle + leads). */
+  plazaRadius: number;
 }
 
 export const HQ_ACCENT = PALETTE.sand;
+export const PLATFORM_RADIUS = 125;
 
 
 const CIRCLE_RADIUS = 22;
-const DISTRICT_RADIUS = 47;
+const DISTRICT_RADIUS = 64;
 const SPACING = 11.5;
 
 /**
@@ -88,5 +91,5 @@ export function layoutCity(team: Team): CityLayout {
     });
   });
 
-  return { buildings, byId: new Map(buildings.map((b) => [b.role.id, b])), districts, circleRadius: CIRCLE_RADIUS };
+  return { buildings, byId: new Map(buildings.map((b) => [b.role.id, b])), districts, circleRadius: CIRCLE_RADIUS, plazaRadius: CIRCLE_RADIUS + 8 };
 }

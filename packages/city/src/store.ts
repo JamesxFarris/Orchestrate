@@ -47,12 +47,17 @@ interface CityState {
   trails: Trail[];
   circleActive: boolean;
   selectedAgent?: string;
+  /** Task whose tree was clicked (shows the task panel). */
+  selectedTask?: string;
   highlightTask?: string;
+  /** performance.now() when the last run completed; drives the city-wide glow wave. */
+  waveAt?: number;
   setTeam(t: Team): void;
   setConnected(c: boolean): void;
   hydrate(agents: AgentSnapshot[], runs: RunState[]): void;
   ingest(e: OrchestrateEvent): void;
   select(agentId?: string): void;
+  selectTask(taskId?: string): void;
   highlight(taskId?: string): void;
   upsertRun(r: RunState): void;
 }
@@ -91,7 +96,8 @@ export const useCity = create<CityState>((set, get) => ({
 
   upsertRun: (r) => set((s) => ({ runs: { ...s.runs, [r.id]: r } })),
 
-  select: (selectedAgent) => set({ selectedAgent }),
+  select: (selectedAgent) => set({ selectedAgent, selectedTask: undefined }),
+  selectTask: (selectedTask) => set({ selectedTask, selectedAgent: undefined }),
   highlight: (highlightTask) => set({ highlightTask }),
 
   ingest: (e) => {
@@ -109,6 +115,7 @@ export const useCity = create<CityState>((set, get) => ({
       case 'run.status':
         if (run) next.runs = { ...s.runs, [e.runId]: { ...run, status: e.status, detail: e.detail } };
         if (['completed', 'failed', 'cancelled'].includes(e.status)) next.circleActive = false;
+        if (e.status === 'completed') next.waveAt = performance.now();
         break;
       case 'plan.proposed':
         if (run && e.problems.length === 0) {

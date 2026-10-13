@@ -4,12 +4,15 @@ import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { layoutCity } from '../layout.ts';
+import { layoutCity, PLATFORM_RADIUS } from '../layout.ts';
 import { PALETTE } from '../palette.ts';
 import { useCity } from '../store.ts';
 import { Building } from './Building.tsx';
-import { Ground, PLATFORM_RADIUS } from './Ground.tsx';
+import { Ground } from './Ground.tsx';
 import { Links } from './Links.tsx';
+import { Landmarks, PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
+import { buildParkLayout } from './park/parkLayout.ts';
+import { WaveDriver } from './park/wave.ts';
 import { TechCircle } from './TechCircle.tsx';
 import { Trails } from './Trails.tsx';
 import { SUN_DIR } from './windowMaterial.ts';
@@ -92,13 +95,14 @@ export function City() {
   const team = useCity((s) => s.team);
   const select = useCity((s) => s.select);
   const layout = useMemo(() => (team ? layoutCity(team) : undefined), [team]);
+  const park = useMemo(() => (layout ? buildParkLayout(layout) : undefined), [layout]);
   const sun = SUN_DIR.clone().multiplyScalar(150);
   const reach = PLATFORM_RADIUS * 0.8;
 
   return (
     <Canvas
       shadows
-      camera={{ position: [100, 78, 116], fov: 36, near: 1, far: 2000 }}
+      camera={{ position: [118, 96, 138], fov: 36, near: 1, far: 2000 }}
       dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onPointerMissed={() => select(undefined)}
@@ -126,10 +130,17 @@ export function City() {
       />
       <directionalLight position={[-sun.x, 50, -sun.z]} intensity={0.45} color="#a9c8d8" />
 
-      {layout && (
+      <WaveDriver />
+      {layout && park && (
         <>
-          <Ground layout={layout} />
-          <TechCircle layout={layout} />
+          <Ground layout={layout} park={park} />
+          <group position-y={0.1}>
+            <TechCircle layout={layout} />
+          </group>
+          <Scenery park={park} />
+          <TaskTrees park={park} />
+          <Landmarks park={park} />
+          {!off('pulses') && <PathPulses park={park} />}
           <Suspense fallback={null}>
             {layout.buildings.map((b) => (
               <Building key={b.role.id} p={b} />
@@ -146,7 +157,7 @@ export function City() {
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.2}
         minDistance={25}
-        maxDistance={260}
+        maxDistance={320}
         target={[0, 9, 0]}
       />
       {!off('fx') && (

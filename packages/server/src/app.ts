@@ -44,7 +44,7 @@ export async function buildApp({ backend, staticDir, logger = false }: AppOption
     };
   });
 
-  app.get('/api/state', async () => ({ agents: backend.bus.agentSnapshots(), runs: backend.list().slice(0, 20) }));
+  app.get('/api/state', async () => ({ agents: backend.bus.agentSnapshots(), runs: backend.list().slice(0, 60) }));
 
   app.get('/api/runs', async () => backend.list());
 
