@@ -1,5 +1,5 @@
 import { Html, useGLTF } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Placement } from '../layout.ts';
@@ -82,9 +82,15 @@ export function Building({ p }: { p: Placement }) {
       mesh.material = name.startsWith('glass') ? glass : name.startsWith('trim') ? trim : body;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.raycast = () => {}; // picking goes through the hit-box below
     });
     return { object, glass, trim };
   }, [scene, arch.model, arch.scale, p.role.id, p.role.kind, p.accent, p.x, p.z]);
+  // Shadows are baked, not re-rendered every frame (see StaticShadows): ask for a re-bake once this model is in.
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, object]);
   useEffect(
     () => () => {
       glass.dispose();
@@ -136,10 +142,10 @@ export function Building({ p }: { p: Placement }) {
         <meshBasicMaterial ref={ring} color={p.accent} toneMapped={false} {...decal} />
       </mesh>
 
-      <primitive
-        object={object}
-        position-y={PLAZA_Y}
-        scale={arch.scale}
+      <primitive object={object} position-y={PLAZA_Y} scale={arch.scale} />
+      {/* Cheap invisible hit-box: picking against the detailed model costs ~20k triangle tests per mouse move. */}
+      <mesh
+        position-y={PLAZA_Y + arch.top / 2}
         onClick={(e: { stopPropagation(): void }) => {
           e.stopPropagation();
           select(selected ? undefined : p.role.id);
@@ -153,7 +159,10 @@ export function Building({ p }: { p: Placement }) {
           setHover(false);
           document.body.style.cursor = '';
         }}
-      />
+      >
+        <boxGeometry args={[arch.width, arch.top, arch.depth]} />
+        <meshBasicMaterial colorWrite={false} depthWrite={false} />
+      </mesh>
       <mesh position-y={PLAZA_Y + arch.top + 0.25}>
         <sphereGeometry args={[0.22, 12, 12]} />
         <meshBasicMaterial ref={beacon} toneMapped={false} />

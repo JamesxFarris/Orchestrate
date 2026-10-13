@@ -1,4 +1,4 @@
-import { OrbitControls } from '@react-three/drei';
+import { AdaptiveDpr, OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { Suspense, useEffect, useMemo } from 'react';
@@ -56,6 +56,16 @@ function Sky() {
   );
 }
 
+/** Nothing that casts a shadow moves, so render the shadow map on demand instead of every frame. */
+function StaticShadows() {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+  }, [gl]);
+  return null;
+}
+
 /** Image-based lighting for glass reflections, generated locally (no HDR download). */
 function Environment() {
   const { gl, scene } = useThree();
@@ -75,7 +85,6 @@ function Environment() {
 
 export function City() {
   const team = useCity((s) => s.team);
-  const anyActive = useCity((s) => Object.values(s.agents).some((a) => a.activity !== 'idle'));
   const select = useCity((s) => s.select);
   const layout = useMemo(() => (team ? layoutCity(team) : undefined), [team]);
   const sun = SUN_DIR.clone().multiplyScalar(150);
@@ -85,7 +94,8 @@ export function City() {
     <Canvas
       shadows
       camera={{ position: [100, 78, 116], fov: 36, near: 1, far: 2000 }}
-      dpr={[1, 2]}
+      dpr={[1, 1.5]}
+      performance={{ min: 0.5 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onPointerMissed={() => select(undefined)}
     >
@@ -93,13 +103,15 @@ export function City() {
       <fogExp2 attach="fog" args={[PALETTE.skyHorizon, 0.0016]} />
       <Sky />
       <Environment />
+      <StaticShadows />
+      <AdaptiveDpr />
       <hemisphereLight args={['#dde8ee', '#6f675d', 0.55]} />
       <directionalLight
         position={[sun.x, sun.y, sun.z]}
         intensity={1.7}
         color="#ffdcb4"
         castShadow
-        shadow-mapSize={[4096, 4096]}
+        shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.04}
         shadow-camera-left={-reach}
@@ -128,14 +140,13 @@ export function City() {
         makeDefault
         enableDamping
         dampingFactor={0.08}
-        autoRotate={!anyActive}
-        autoRotateSpeed={0.3}
+        regress
         maxPolarAngle={Math.PI / 2.2}
         minDistance={25}
         maxDistance={260}
         target={[0, 9, 0]}
       />
-      <EffectComposer multisampling={4}>
+      <EffectComposer multisampling={2}>
         <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.8} luminanceSmoothing={0.2} radius={0.7} />
         <Vignette offset={0.45} darkness={0.22} />
       </EffectComposer>
