@@ -177,7 +177,7 @@ export function Building({ p }: { p: Placement }) {
 
   const pad = arch.footprint * 0.62 + 1.4;
   const verb = activityVerb(p.role.kind, activity);
-  const showCard = active || selected;
+  const showCard = active || selected || hover;
 
   return (
     <group position={[p.x, 0, p.z]}>
@@ -227,9 +227,13 @@ export function Building({ p }: { p: Placement }) {
         <meshBasicMaterial ref={beacon} toneMapped={false} />
       </mesh>
 
-      <Html position={[0, PLAZA_Y + arch.top + (showCard ? 4.2 : 2), 0]} center distanceFactor={70} zIndexRange={[showCard ? 20 : 10, 0]} style={{ pointerEvents: 'none' }}>
+      {/* Fixed on-screen size (no distanceFactor) so text stays readable at any zoom. */}
+      <Html
+        key={hover || selected ? 'focus' : showCard ? 'card' : 'tag'} // drei only re-stacks on camera moves; remount to apply the new layer
+        position={[0, PLAZA_Y + arch.top + 2, 0]}
+        zIndexRange={hover || selected ? [1400, 1300] : showCard ? [900, 500] : [400, 0]} style={{ pointerEvents: 'none' }}>
         {showCard ? (
-          <div className={`card card--${activity}`} style={{ ['--accent' as string]: active ? ACTIVITY_COLOR[activity] : p.accent }}>
+          <div className={`card card--${activity} ${hover || selected ? 'card--focus' : ''}`} style={{ ['--accent' as string]: active ? ACTIVITY_COLOR[activity] : p.accent }}>
             <div className="card__head">
               <span className="card__icon">
                 <RoleIcon kind={p.role.kind} size={15} />

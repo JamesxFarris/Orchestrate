@@ -163,7 +163,7 @@ function TaskTree({ task, at }: { task: TaskState; at: THREE.Vector2 }) {
         <meshBasicMaterial colorWrite={false} depthWrite={false} />
       </mesh>
       {(hover || selected) && (
-        <Html position={[0, 5, 0]} center distanceFactor={60} zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={[0, 5, 0]} zIndexRange={[1400, 1300]} style={{ pointerEvents: 'none' }}>
           <div className="tag tag--tree" style={{ ['--accent' as string]: TASK_COLOR[status] }}>
             <span>{task.contract.title}</span>
             <b>{TASK_LABEL[status]}</b>
