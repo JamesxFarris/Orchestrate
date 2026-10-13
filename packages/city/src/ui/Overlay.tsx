@@ -532,3 +532,21 @@ export function TaskPanel() {
     </aside>
   );
 }
+
+/** City-builder camera controls: presets plus a reminder of the keys. */
+export function CameraBar() {
+  const camera = useCity((s) => s.camera);
+  return (
+    <div className="camerabar" role="toolbar" aria-label="Camera">
+      <button className="btn btn--ghost" onClick={() => camera({ kind: 'overview' })} title="Top-down overview">
+        Overview
+      </button>
+      <button className="btn btn--ghost" onClick={() => camera({ kind: 'angled' })} title="Angled city view">
+        Angled
+      </button>
+      <span className="camerabar__keys">
+        <kbd>WASD</kbd> pan · <kbd>Q</kbd>/<kbd>E</kbd> rotate · <kbd>R</kbd>/<kbd>F</kbd> zoom · double-click a tower
+      </span>
+    </div>
+  );
+}

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { connect } from './api.ts';
 import { City } from './scene/City.tsx';
 import { useCity } from './store.ts';
-import { AgentPanel, Legend, PlanDrawer, PromptBar, TaskBoard, TaskPanel, Ticker, TopBar } from './ui/Overlay.tsx';
+import { AgentPanel, CameraBar, Legend, PlanDrawer, PromptBar, TaskBoard, TaskPanel, Ticker, TopBar } from './ui/Overlay.tsx';
 import './styles.css';
 
 function App() {
@@ -32,6 +32,7 @@ function App() {
       <Ticker />
       <Legend />
       <PromptBar />
+      <CameraBar />
       <PlanDrawer open={planOpen} onClose={() => setPlanOpen(false)} />
     </>
   );

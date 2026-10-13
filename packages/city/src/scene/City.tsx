@@ -8,6 +8,8 @@ import { layoutCity, PLATFORM_RADIUS } from '../layout.ts';
 import { PALETTE } from '../palette.ts';
 import { useCity } from '../store.ts';
 import { Building } from './Building.tsx';
+import { CAMERA_LIMITS, CameraRig } from './CameraRig.tsx';
+import { LabelManager } from './labels.ts';
 import { Ground } from './Ground.tsx';
 import { Links } from './Links.tsx';
 import { Landmarks, PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
@@ -155,11 +157,16 @@ export function City() {
         makeDefault
         enableDamping
         dampingFactor={0.08}
-        maxPolarAngle={Math.PI / 2.2}
-        minDistance={25}
-        maxDistance={320}
+        maxPolarAngle={CAMERA_LIMITS.maxPolar}
+        minPolarAngle={CAMERA_LIMITS.minPolar}
+        minDistance={CAMERA_LIMITS.minDistance}
+        maxDistance={CAMERA_LIMITS.maxDistance}
+        zoomToCursor
+        screenSpacePanning={false}
         target={[0, 9, 0]}
       />
+      <CameraRig />
+      <LabelManager />
       {!off('fx') && (
       <EffectComposer multisampling={4}>
         <Bloom mipmapBlur intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />

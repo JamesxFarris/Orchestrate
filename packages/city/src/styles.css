@@ -329,7 +329,7 @@ code {
 
 /* ---------------------------------------------------------------- agent panel */
 .agentpanel {
-  top: 92px;
+  top: 132px;
   right: 16px;
   width: min(380px, calc(100vw - 32px));
 }
@@ -481,7 +481,7 @@ code {
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  width: min(820px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   display: flex;
   gap: 10px;
   align-items: center;
@@ -592,7 +592,6 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transform: translate(-50%, -100%);
   font-size: 12.5px;
   font-weight: 600;
   color: var(--onyx);
@@ -624,8 +623,6 @@ code {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--text);
-  /* anchored bottom-centre above its building */
-  transform: translate(-50%, calc(-100% - 8px));
   transition: width 0.15s ease, font-size 0.15s ease;
 }
 .card--focus {
@@ -751,6 +748,7 @@ code {
 }
 
 .tag--tree {
+  transform: translate(-50%, -100%);
   gap: 8px;
   font-size: 14px;
   padding: 6px 10px 6px 10px;
@@ -778,3 +776,108 @@ code {
   align-items: center;
   gap: 4px;
 }
+
+/* ---------------------------------------------------------------- floating labels */
+.label {
+  --accent: var(--payne);
+  /* anchored bottom-centre above its building */
+  transform: translate(-50%, calc(-100% - 6px));
+  transition: opacity 0.25s ease;
+  width: max-content;
+}
+.label--hidden {
+  opacity: 0;
+}
+.label .tag {
+  border-left-color: var(--accent);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--onyx);
+  white-space: nowrap;
+  background: rgba(242, 242, 243, 0.94);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 12px rgba(38, 44, 52, 0.22);
+}
+.pill svg {
+  color: color-mix(in srgb, var(--accent) 70%, var(--onyx));
+}
+.pill b {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 40%, white);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.dot {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--onyx);
+  background: rgba(242, 242, 243, 0.92);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent), 0 3px 8px rgba(38, 44, 52, 0.25);
+}
+.dot--active {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 18px var(--accent);
+}
+.card__hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.camerabar {
+  position: fixed;
+  z-index: 2000;
+  right: 16px;
+  top: calc(76px + env(safe-area-inset-top, 0px));
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(38, 44, 52, 0.18);
+}
+.camerabar .btn {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.camerabar__keys {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+.camerabar__keys kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+@media (max-width: 1400px) {
+  .camerabar__keys {
+    display: none;
+  }
+}
+

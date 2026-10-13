@@ -29,6 +29,12 @@ export interface AgentView extends AgentSnapshot {
   flashAt?: number;
 }
 
+export interface CameraCmd {
+  kind: 'overview' | 'angled' | 'focus';
+  target?: [number, number, number];
+  seq: number;
+}
+
 export interface Trail {
   id: number;
   from: string;
@@ -52,12 +58,15 @@ interface CityState {
   highlightTask?: string;
   /** performance.now() when the last run completed; drives the city-wide glow wave. */
   waveAt?: number;
+  /** Latest camera request from the HUD or a double-click; seq makes repeats re-trigger. */
+  cameraCmd?: CameraCmd;
   setTeam(t: Team): void;
   setConnected(c: boolean): void;
   hydrate(agents: AgentSnapshot[], runs: RunState[]): void;
   ingest(e: OrchestrateEvent): void;
   select(agentId?: string): void;
   selectTask(taskId?: string): void;
+  camera(cmd: Omit<CameraCmd, 'seq'>): void;
   highlight(taskId?: string): void;
   upsertRun(r: RunState): void;
 }
@@ -98,6 +107,7 @@ export const useCity = create<CityState>((set, get) => ({
 
   select: (selectedAgent) => set({ selectedAgent, selectedTask: undefined }),
   selectTask: (selectedTask) => set({ selectedTask, selectedAgent: undefined }),
+  camera: (cmd) => set((s) => ({ cameraCmd: { ...cmd, seq: (s.cameraCmd?.seq ?? 0) + 1 } })),
   highlight: (highlightTask) => set({ highlightTask }),
 
   ingest: (e) => {
