@@ -4,19 +4,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Placement } from '../layout.ts';
 import { PALETTE } from '../palette.ts';
-import { ACTIVITY_COLOR, ACTIVITY_LABEL, useCity } from '../store.ts';
+import { ACTIVITY_COLOR, useCity } from '../store.ts';
+import { activityVerb, RoleIcon } from '../ui/roleIcons.tsx';
 import { MODEL_URL } from './archetypes.ts';
-import { createGlassMaterial, glassUniforms } from './windowMaterial.ts';
+import { activityWeights, createGlassMaterial, glassUniforms } from './windowMaterial.ts';
 
-const LIT: Record<string, number> = { idle: 0, working: 0.8, testing: 0.68, reviewing: 0.6, blocked: 0.9 };
 const PLAZA_Y = 0.24;
 
-/** Masonry tones per role kind: HQ in warm limestone, squads in platinum/silver. */
+/** Masonry base per role kind; squad buildings are then tinted toward their squad colour. */
 const BODY: Record<string, string> = {
   master: PALETTE.limestone,
   architect: PALETTE.platinum,
   qa_head: PALETTE.limestone,
-  lead: '#d4d0c8',
   analyst: PALETTE.limestone,
 };
 const bodyMaterials = new Map<string, THREE.MeshStandardMaterial>();
@@ -53,6 +52,26 @@ const fmtElapsed = (ms: number) => {
 /** Decals sit on top of coplanar surfaces without z-fighting. */
 const decal = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 } as const;
 
+/** Soft additive column of light around an active tower, fading upward. */
+const auraVertex = /* glsl */ `
+  varying float vH;
+  void main() {
+    vH = uv.y;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const auraFragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  uniform float uTime;
+  varying float vH;
+  void main() {
+    float fade = pow(1.0 - vH, 1.6);
+    float ripple = 0.75 + 0.25 * sin(vH * 24.0 - uTime * 3.0);
+    gl_FragColor = vec4(uColor * 1.6, fade * ripple * uOpacity);
+  }
+`;
+
 useGLTF.preload(MODEL_URL, false, true);
 
 export function Building({ p }: { p: Placement }) {
@@ -72,7 +91,9 @@ export function Building({ p }: { p: Placement }) {
     const source = scene.getObjectByName(arch.model);
     const glass = createGlassMaterial(Math.round(arch.scale / 1.05), seedOf(p.role.id), new THREE.Vector3(p.x, PLAZA_Y, p.z), arch.scale);
     const trim = new THREE.MeshStandardMaterial({ color: p.accent, roughness: 0.35, metalness: 0.6, emissive: new THREE.Color(p.accent), emissiveIntensity: 0.15 });
-    const body = bodyMaterial(BODY[p.role.kind] ?? PALETTE.platinum);
+    const base = new THREE.Color(BODY[p.role.kind] ?? PALETTE.platinum);
+    if (p.squad) base.lerp(new THREE.Color(p.squad.color), 0.22);
+    const body = bodyMaterial(`#${base.getHexString()}`);
     const object = (source ?? new THREE.Group()).clone(true);
     object.position.set(0, 0, 0);
     object.traverse((o) => {
@@ -85,7 +106,23 @@ export function Building({ p }: { p: Placement }) {
       mesh.raycast = () => {}; // picking goes through the hit-box below
     });
     return { object, glass, trim };
-  }, [scene, arch.model, arch.scale, p.role.id, p.role.kind, p.accent, p.x, p.z]);
+  }, [scene, arch.model, arch.scale, p.role.id, p.role.kind, p.accent, p.squad, p.x, p.z]);
+
+  const aura = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: auraVertex,
+        fragmentShader: auraFragment,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        uniforms: { uColor: { value: new THREE.Color(PALETTE.amber) }, uOpacity: { value: 0 }, uTime: { value: 0 } },
+      }),
+    [],
+  );
+
   // Shadows are baked, not re-rendered every frame (see StaticShadows): ask for a re-bake once this model is in.
   const gl = useThree((s) => s.gl);
   useEffect(() => {
@@ -95,16 +132,18 @@ export function Building({ p }: { p: Placement }) {
     () => () => {
       glass.dispose();
       trim.dispose();
+      aura.dispose();
     },
-    [glass, trim],
+    [glass, trim, aura],
   );
 
-  const target = useRef({ lit: 0, color: new THREE.Color(ACTIVITY_COLOR.working) });
-  target.current.lit = LIT[activity] ?? 0;
-  if (active) target.current.color.set(ACTIVITY_COLOR[activity]);
-  const accentColor = useMemo(() => new THREE.Color(p.accent), [p.accent]);
+  const targetWeights = useMemo(() => new THREE.Vector4(), []);
+  activityWeights(activity, targetWeights);
+  const activeColor = useMemo(() => new THREE.Color(), []);
+  activeColor.set(active ? ACTIVITY_COLOR[activity] : p.accent);
   const beacon = useRef<THREE.MeshBasicMaterial>(null);
   const ring = useRef<THREE.MeshBasicMaterial>(null);
+  const groundGlow = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame((state, dt) => {
     const k = 1 - Math.exp(-dt * 3);
@@ -113,36 +152,55 @@ export function Building({ p }: { p: Placement }) {
     const flash = flashAge < 2.2 ? Math.max(0, 1 - flashAge / 2.2) * 0.8 : 0;
     const u = glassUniforms(glass);
     u.uTime.value = t;
-    u.uLit.value += (target.current.lit - u.uLit.value) * k;
-    u.uColor.value.lerp(target.current.color, k);
-    u.uPulse.value += ((activity === 'blocked' ? 1 : 0) - u.uPulse.value) * k;
+    u.uWeights.value.lerp(targetWeights, k);
     u.uFlash.value = flash;
+    const w = u.uWeights.value;
+    const energy = Math.min(1, w.x + w.y + w.z + w.w);
+
     const glow = hover || selected || highlighted ? 1 : 0;
-    trim.emissive.copy(active ? target.current.color : accentColor);
-    trim.emissiveIntensity += (0.15 + u.uLit.value * 1.6 + glow * 0.6 - trim.emissiveIntensity) * k;
-    if (ring.current) ring.current.color.set(active ? ACTIVITY_COLOR[activity] : p.accent);
+    trim.emissive.lerp(activeColor, k);
+    trim.emissiveIntensity += (0.2 + energy * 2.2 + glow * 0.8 - trim.emissiveIntensity) * k;
+
+    const au = aura.uniforms;
+    au.uTime!.value = t;
+    (au.uColor!.value as THREE.Color).lerp(activeColor, k);
+    au.uOpacity!.value += ((active ? (activity === 'blocked' ? 0.55 + 0.35 * Math.sin(t * 15) : 0.5) : 0) - au.uOpacity!.value) * k;
+
+    if (ring.current) ring.current.color.copy(activeColor).multiplyScalar(1 + energy * 1.5);
+    if (groundGlow.current) groundGlow.current.opacity = energy * 0.55;
     if (beacon.current) {
       const blink = Math.sin(t * 2.2 + seedOf(p.role.id)) > 0.6 ? 1 : 0.25;
-      beacon.current.color.set(active ? ACTIVITY_COLOR[activity] : PALETTE.vermilion).multiplyScalar(active ? 3 : 2.2 * blink);
+      beacon.current.color.set(active ? ACTIVITY_COLOR[activity] : PALETTE.vermilion).multiplyScalar(active ? 4 : 2.2 * blink);
     }
   });
 
-  const showCard = active || hover || selected;
   const pad = arch.footprint * 0.62 + 1.4;
+  const verb = activityVerb(p.role.kind, activity);
+  const showCard = active || selected;
 
   return (
     <group position={[p.x, 0, p.z]}>
-      {/* raised plaza with an activity ring */}
+      {/* raised plaza, an activity ring, and a pool of light when busy */}
       <mesh position-y={PLAZA_Y / 2} receiveShadow>
         <cylinderGeometry args={[pad, pad + 0.15, PLAZA_Y, 64]} />
         <meshStandardMaterial color={PALETTE.stone} roughness={0.9} />
       </mesh>
       <mesh position-y={PLAZA_Y + 0.005} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[pad - 0.45, pad - 0.15, 72]} />
-        <meshBasicMaterial ref={ring} color={p.accent} toneMapped={false} {...decal} />
+        <circleGeometry args={[pad - 0.15, 64]} />
+        <meshBasicMaterial ref={groundGlow} color={activeColor} transparent opacity={0} depthWrite={false} toneMapped={false} blending={THREE.AdditiveBlending} {...decal} />
+      </mesh>
+      <mesh position-y={PLAZA_Y + 0.006} rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[pad - 0.5, pad - 0.15, 72]} />
+        <meshBasicMaterial ref={ring} color={p.accent} toneMapped={false} polygonOffset polygonOffsetFactor={-6} polygonOffsetUnits={-6} />
       </mesh>
 
       <primitive object={object} position-y={PLAZA_Y} scale={arch.scale} />
+
+      {/* light column (only visible while active) */}
+      <mesh position-y={PLAZA_Y + arch.top * 0.6} material={aura} renderOrder={2}>
+        <cylinderGeometry args={[arch.footprint * 0.62, arch.footprint * 0.62, arch.top * 1.2, 40, 1, true]} />
+      </mesh>
+
       {/* Cheap invisible hit-box: picking against the detailed model costs ~20k triangle tests per mouse move. */}
       <mesh
         position-y={PLAZA_Y + arch.top / 2}
@@ -163,18 +221,21 @@ export function Building({ p }: { p: Placement }) {
         <boxGeometry args={[arch.width, arch.top, arch.depth]} />
         <meshBasicMaterial colorWrite={false} depthWrite={false} />
       </mesh>
-      <mesh position-y={PLAZA_Y + arch.top + 0.25}>
-        <sphereGeometry args={[0.22, 12, 12]} />
+      <mesh position-y={PLAZA_Y + arch.top + 0.3}>
+        <sphereGeometry args={[0.28, 12, 12]} />
         <meshBasicMaterial ref={beacon} toneMapped={false} />
       </mesh>
 
-      {showCard ? (
-        <Html position={[0, arch.top + 4, 0]} center distanceFactor={70} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-          <div className={`card ${active ? 'card--active' : ''}`} style={{ ['--accent' as string]: active ? ACTIVITY_COLOR[activity] : p.accent }}>
+      <Html position={[0, PLAZA_Y + arch.top + (showCard ? 4.2 : 2), 0]} center distanceFactor={70} zIndexRange={[showCard ? 20 : 10, 0]} style={{ pointerEvents: 'none' }}>
+        {showCard ? (
+          <div className={`card card--${activity}`} style={{ ['--accent' as string]: active ? ACTIVITY_COLOR[activity] : p.accent }}>
             <div className="card__head">
+              <span className="card__icon">
+                <RoleIcon kind={p.role.kind} size={15} />
+              </span>
               <span className="card__role">{p.role.title}</span>
-              <span className="card__chip">{ACTIVITY_LABEL[activity]}</span>
             </div>
+            <div className="card__verb">{verb}</div>
             {agent?.taskTitle && <div className="card__task">{agent.taskTitle}</div>}
             {active && agent?.summary && <div className="card__summary">{agent.summary}</div>}
             {active && (
@@ -184,14 +245,13 @@ export function Building({ p }: { p: Placement }) {
               </div>
             )}
           </div>
-        </Html>
-      ) : (
-        <Html position={[0, arch.top + 1.8, 0]} center distanceFactor={70} zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="tag" style={{ ['--accent' as string]: p.accent }}>
-            {p.role.title}
+        ) : (
+          <div className={`tag ${hover ? 'tag--hover' : ''}`} style={{ ['--accent' as string]: p.accent }}>
+            <RoleIcon kind={p.role.kind} size={12} />
+            <span>{p.role.title}</span>
           </div>
-        </Html>
-      )}
+        )}
+      </Html>
     </group>
   );
 }

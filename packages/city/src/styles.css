@@ -340,9 +340,13 @@ code {
   padding-right: 24px;
 }
 .agent__dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
   box-shadow: 0 0 0 3px rgba(70, 73, 76, 0.12);
 }
 .agent__title {
@@ -463,7 +467,7 @@ code {
   font-size: 11.5px;
   color: var(--muted);
   flex-wrap: wrap;
-  max-width: calc(100vw - 32px);
+  max-width: min(470px, calc(100vw - 32px));
 }
 .legend i {
   display: inline-block;
@@ -585,15 +589,25 @@ code {
 /* ---------------------------------------------------------------- 3D labels */
 .tag {
   --accent: var(--payne);
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--onyx);
   white-space: nowrap;
-  background: rgba(236, 236, 238, 0.85);
+  background: rgba(242, 242, 243, 0.9);
   border-left: 3px solid var(--accent);
-  border-radius: 4px;
-  padding: 1px 7px;
-  box-shadow: 0 2px 8px rgba(38, 44, 52, 0.18);
+  border-radius: 5px;
+  padding: 2px 8px 2px 6px;
+  box-shadow: 0 2px 8px rgba(38, 44, 52, 0.2);
+}
+.tag svg {
+  color: var(--accent);
+  flex: none;
+}
+.tag--hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 8px rgba(38, 44, 52, 0.2);
 }
 .card {
   --accent: var(--amber);
@@ -666,4 +680,47 @@ code {
   .runpill__prompt {
     display: none;
   }
+}
+
+.card__icon {
+  display: inline-flex;
+  color: color-mix(in srgb, var(--accent) 70%, var(--onyx));
+  margin-right: 6px;
+}
+.card__head {
+  justify-content: flex-start;
+}
+.card__verb {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--onyx);
+  display: inline-block;
+  background: color-mix(in srgb, var(--accent) 45%, white);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.card--blocked {
+  animation: blocked-pulse 0.8s ease-in-out infinite;
+}
+@keyframes blocked-pulse {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent), 0 10px 24px rgba(38, 44, 52, 0.25);
+  }
+}
+.legend__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-basis: 100%;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.legend__roles span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--onyx);
 }

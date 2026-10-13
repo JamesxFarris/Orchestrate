@@ -3,16 +3,25 @@ import { PALETTE } from '../palette.ts';
 
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize();
 
+/**
+ * Per-activity weights (0..1, eased on the JS side) so each kind of work has its own signature:
+ *   x working   — offices fill with warm light, flickering as people move
+ *   y testing   — a bright scan line sweeps up and down the tower over a dim base
+ *   z reviewing — the whole curtain wall breathes slowly
+ *   w blocked   — hard red strobe
+ */
 export interface GlassUniforms {
   uFloors: { value: number };
   uOrigin: { value: THREE.Vector3 };
   uScale: { value: number };
   uSeed: { value: number };
-  uColor: { value: THREE.Color };
+  uWeights: { value: THREE.Vector4 };
+  uWorking: { value: THREE.Color };
+  uTesting: { value: THREE.Color };
+  uReviewing: { value: THREE.Color };
+  uBlocked: { value: THREE.Color };
   uFlashColor: { value: THREE.Color };
-  uLit: { value: number };
   uTime: { value: number };
-  uPulse: { value: number };
   uFlash: { value: number };
 }
 
@@ -21,33 +30,47 @@ const HEADER = /* glsl */ `
   uniform vec3 uOrigin;
   uniform float uScale;
   uniform float uSeed;
-  uniform vec3 uColor;
+  uniform vec4 uWeights;
+  uniform vec3 uWorking;
+  uniform vec3 uTesting;
+  uniform vec3 uReviewing;
+  uniform vec3 uBlocked;
   uniform vec3 uFlashColor;
-  uniform float uLit;
   uniform float uTime;
-  uniform float uPulse;
   uniform float uFlash;
   varying vec3 vObjPos;
   float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed * 13.37) * 43758.5453); }
 `;
 
-/**
- * Lights individual office "cells" of a model's glass. Cells are floors (object-space height) by
- * bays (angle around the tower's axis), so it works on any footprint: slabs, drums, clusters.
- */
 const LIGHTS = /* glsl */ `
   vec3 lp = (vObjPos - uOrigin) / uScale;
   float floorIdx = floor(lp.y * uFloors);
   float bay = floor((atan(lp.z, lp.x) + 3.1415927) * 9.0 + (lp.x + lp.z) * 40.0);
   vec2 cell = vec2(bay, floorIdx);
   float h = gHash(cell);
-  float drift = gHash(cell + floor(uTime * 0.5 + h * 9.0));
-  float lit = mix(step(h, uLit), step(drift, uLit), 0.2);
-  float pulse = mix(1.0, 0.4 + 0.6 * (0.5 + 0.5 * sin(uTime * 7.0)), uPulse);
-  totalEmissiveRadiance += uColor * (1.05 + 0.5 * h) * pulse * lit + uFlashColor * 1.4 * uFlash;
+  float drift = gHash(cell + floor(uTime * 0.7 + h * 9.0));
+
+  // working: most offices on, a few flicker
+  float office = mix(step(h, 0.82), step(drift, 0.82), 0.25);
+  vec3 em = uWorking * office * (1.6 + 0.9 * h) * uWeights.x;
+
+  // testing: dim base + a scan band travelling up and down
+  float scanY = 0.5 + 0.5 * sin(uTime * 1.6);
+  float band = 1.0 - smoothstep(0.0, 0.06, abs(lp.y - scanY));
+  em += uTesting * (step(h, 0.45) * 0.7 + band * 3.2) * uWeights.y;
+
+  // reviewing: the wall breathes as one
+  float breathe = 0.55 + 0.45 * sin(uTime * 2.2);
+  em += uReviewing * (0.5 + step(h, 0.7) * 1.2) * breathe * uWeights.z;
+
+  // blocked: strobe
+  float strobe = step(0.5, fract(uTime * 2.4));
+  em += uBlocked * step(h, 0.9) * (0.4 + 2.4 * strobe) * uWeights.w;
+
+  em += uFlashColor * 2.2 * uFlash;
+  totalEmissiveRadiance += em;
 `;
 
-/** Reflective curtain-wall glass that lights up floor by floor while the agent works. */
 /** `origin` = world position of the building base, `scale` = its height, so cells stay fixed to the facade. */
 export function createGlassMaterial(floors: number, seed: number, origin: THREE.Vector3, scale: number): THREE.MeshStandardMaterial {
   const uniforms: GlassUniforms = {
@@ -55,16 +78,18 @@ export function createGlassMaterial(floors: number, seed: number, origin: THREE.
     uOrigin: { value: origin.clone() },
     uScale: { value: scale },
     uSeed: { value: seed },
-    uColor: { value: new THREE.Color(PALETTE.amber) },
+    uWeights: { value: new THREE.Vector4() },
+    uWorking: { value: new THREE.Color(PALETTE.amber) },
+    uTesting: { value: new THREE.Color(PALETTE.ceruleanBright) },
+    uReviewing: { value: new THREE.Color(PALETTE.lavender) },
+    uBlocked: { value: new THREE.Color(PALETTE.vermilion) },
     uFlashColor: { value: new THREE.Color(PALETTE.green) },
-    uLit: { value: 0 },
     uTime: { value: 0 },
-    uPulse: { value: 0 },
     uFlash: { value: 0 },
   };
   const m = new THREE.MeshStandardMaterial({ color: PALETTE.glass, roughness: 0.15, metalness: 0.55, envMapIntensity: 0.8 });
   m.userData.uniforms = uniforms;
-  m.customProgramCacheKey = () => 'orchestrate-glass-v1';
+  m.customProgramCacheKey = () => 'orchestrate-glass-v2';
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = `varying vec3 vObjPos;\n${shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vObjPos = (modelMatrix * vec4(transformed, 1.0)).xyz;')}`;
@@ -74,3 +99,13 @@ export function createGlassMaterial(floors: number, seed: number, origin: THREE.
 }
 
 export const glassUniforms = (m: THREE.Material) => m.userData.uniforms as GlassUniforms;
+
+const WEIGHT_INDEX = { working: 0, testing: 1, reviewing: 2, blocked: 3 } as const;
+
+/** Target weight vector for an activity (all zero when idle). */
+export function activityWeights(activity: string, out = new THREE.Vector4()): THREE.Vector4 {
+  out.set(0, 0, 0, 0);
+  const i = WEIGHT_INDEX[activity as keyof typeof WEIGHT_INDEX];
+  if (i !== undefined) out.setComponent(i, 1);
+  return out;
+}

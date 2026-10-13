@@ -1,3 +1,4 @@
+import { Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -5,54 +6,64 @@ import type { CityLayout } from '../layout.ts';
 import { PALETTE } from '../palette.ts';
 import { useCity, type Trail } from '../store.ts';
 
-const DURATION = 1.8;
+const TRAVEL = 2.0;
+const LINGER = 2.5;
 const REASON_COLOR: Record<string, string> = {
   'acceptance tests are red': PALETTE.ceruleanBright,
   'code review': PALETTE.lavender,
   escalation: PALETTE.vermilion,
+  guidance: PALETTE.lavender,
   merged: PALETTE.green,
 };
 
-/** A comet that arcs from one tower to another when work changes hands. */
+/** A bright comet that arcs between towers when work changes hands, leaving a fading ribbon. */
 function Comet({ trail, layout }: { trail: Trail; layout: CityLayout }) {
   const head = useRef<THREE.Mesh>(null);
-  const tail = useRef<THREE.Line>(null);
-  const color = new THREE.Color(REASON_COLOR[trail.reason] ?? PALETTE.amber).multiplyScalar(3);
+  const halo = useRef<THREE.Mesh>(null);
+  const ribbon = useRef<{ material: { opacity: number }; geometry: { instanceCount: number } }>(null);
+  const color = REASON_COLOR[trail.reason] ?? PALETTE.amber;
+  const hot = useMemo(() => new THREE.Color(color).multiplyScalar(4), [color]);
 
-  const curve = useMemo(() => {
+  const points = useMemo(() => {
     const a = layout.byId.get(trail.from);
     const b = layout.byId.get(trail.to);
     if (!a || !b) return undefined;
-    const from = new THREE.Vector3(a.x, a.height * 0.85, a.z);
-    const to = new THREE.Vector3(b.x, b.height * 0.85, b.z);
+    const from = new THREE.Vector3(a.x, a.archetype.top * 0.9, a.z);
+    const to = new THREE.Vector3(b.x, b.archetype.top * 0.9, b.z);
     const mid = from.clone().add(to).multiplyScalar(0.5);
-    mid.y = Math.max(a.height, b.height) + from.distanceTo(to) * 0.25;
-    return new THREE.QuadraticBezierCurve3(from, mid, to);
+    mid.y = Math.max(from.y, to.y) + from.distanceTo(to) * 0.35;
+    return new THREE.QuadraticBezierCurve3(from, mid, to).getPoints(60);
   }, [trail, layout]);
 
-  const geometry = useMemo(() => new THREE.BufferGeometry().setFromPoints(curve?.getPoints(48) ?? []), [curve]);
-
   useFrame(() => {
-    if (!curve || !head.current || !tail.current) return;
-    const t = Math.min((performance.now() - trail.at) / 1000 / DURATION, 1);
+    if (!points || !head.current) return;
+    const age = (performance.now() - trail.at) / 1000;
+    const t = Math.min(age / TRAVEL, 1);
     const eased = 1 - Math.pow(1 - t, 3);
-    head.current.position.copy(curve.getPoint(eased));
+    const idx = eased * (points.length - 1);
+    const p = points[Math.floor(idx)]!.clone().lerp(points[Math.min(Math.ceil(idx), points.length - 1)]!, idx % 1);
+    head.current.position.copy(p);
+    halo.current?.position.copy(p);
     head.current.visible = t < 1;
-    geometry.setDrawRange(0, Math.floor(eased * 49));
-    (tail.current.material as THREE.LineBasicMaterial).opacity = t < 1 ? 0.7 : Math.max(0, 0.7 - (performance.now() - trail.at - DURATION * 1000) / 1500);
+    if (halo.current) halo.current.visible = t < 1;
+    if (ribbon.current) {
+      ribbon.current.geometry.instanceCount = Math.max(1, Math.floor(eased * (points.length - 1)));
+      ribbon.current.material.opacity = t < 1 ? 0.95 : Math.max(0, 0.95 * (1 - (age - TRAVEL) / LINGER));
+    }
   });
 
-  if (!curve) return null;
+  if (!points) return null;
   return (
     <group>
+      <Line ref={ribbon as never} points={points} color={color} lineWidth={4} transparent opacity={0.95} toneMapped={false} />
       <mesh ref={head}>
-        <sphereGeometry args={[0.35, 12, 12]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
+        <sphereGeometry args={[0.55, 16, 16]} />
+        <meshBasicMaterial color={hot} toneMapped={false} />
       </mesh>
-      {/* @ts-expect-error three's <line> clashes with the SVG <line> JSX type */}
-      <line ref={tail} geometry={geometry}>
-        <lineBasicMaterial color={color} transparent opacity={0.7} toneMapped={false} />
-      </line>
+      <mesh ref={halo}>
+        <sphereGeometry args={[1.3, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.25} depthWrite={false} toneMapped={false} />
+      </mesh>
     </group>
   );
 }

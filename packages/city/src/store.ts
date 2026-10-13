@@ -152,7 +152,7 @@ export const useCity = create<CityState>((set, get) => ({
       }
       case 'handoff': {
         const now = performance.now();
-        const trails = s.trails.filter((t) => now - t.at < 4000);
+        const trails = s.trails.filter((t) => now - t.at < 6000);
         trails.push({ id: ++trailSeq, from: e.from, to: e.to, reason: e.reason, at: now });
         next.trails = trails;
         if (e.reason === 'merged') {

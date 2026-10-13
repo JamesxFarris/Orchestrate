@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
 import { api } from '../api.ts';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity } from '../store.ts';
+import { RoleIcon } from './roleIcons.tsx';
 
 const useCurrentRun = (): RunState | undefined => useCity((s) => (s.currentRunId ? s.runs[s.currentRunId] : undefined));
 
@@ -233,7 +234,9 @@ export function AgentPanel() {
         ×
       </button>
       <div className="agent__head">
-        <span className="agent__dot" style={{ background: ACTIVITY_COLOR[activity] }} />
+        <span className="agent__dot" style={{ background: ACTIVITY_COLOR[activity] }}>
+          {role && <RoleIcon kind={role.kind} size={14} />}
+        </span>
         <div>
           <div className="agent__title">{role?.title}</div>
           <div className="muted">
@@ -387,6 +390,17 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
+const ACTIVITY_COLOR_MERGED = '#7bc950';
+const ROLE_KEY: [string, string][] = [
+  ['master', 'Head of Eng'],
+  ['architect', 'Architect'],
+  ['qa_head', 'Head of QA'],
+  ['lead', 'Lead'],
+  ['dev', 'Dev'],
+  ['qa', 'QA'],
+  ['analyst', 'Research'],
+];
+
 export function Legend() {
   return (
     <div className="legend">
@@ -397,9 +411,17 @@ export function Legend() {
         </span>
       ))}
       <span>
-        <i style={{ background: '#22c55e' }} />
+        <i style={{ background: ACTIVITY_COLOR_MERGED }} />
         Merged
       </span>
+      <div className="legend__roles">
+        {ROLE_KEY.map(([kind, label]) => (
+          <span key={kind}>
+            <RoleIcon kind={kind} size={13} />
+            {label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

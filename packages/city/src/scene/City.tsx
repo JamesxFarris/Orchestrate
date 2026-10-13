@@ -1,4 +1,4 @@
-import { AdaptiveDpr, OrbitControls } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { Suspense, useEffect, useMemo } from 'react';
@@ -9,6 +9,7 @@ import { PALETTE } from '../palette.ts';
 import { useCity } from '../store.ts';
 import { Building } from './Building.tsx';
 import { Ground, PLATFORM_RADIUS } from './Ground.tsx';
+import { Links } from './Links.tsx';
 import { TechCircle } from './TechCircle.tsx';
 import { Trails } from './Trails.tsx';
 import { SUN_DIR } from './windowMaterial.ts';
@@ -94,8 +95,7 @@ export function City() {
     <Canvas
       shadows
       camera={{ position: [100, 78, 116], fov: 36, near: 1, far: 2000 }}
-      dpr={[1, 1.5]}
-      performance={{ min: 0.5 }}
+      dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onPointerMissed={() => select(undefined)}
     >
@@ -104,7 +104,6 @@ export function City() {
       <Sky />
       <Environment />
       <StaticShadows />
-      <AdaptiveDpr />
       <hemisphereLight args={['#dde8ee', '#6f675d', 0.55]} />
       <directionalLight
         position={[sun.x, sun.y, sun.z]}
@@ -132,6 +131,7 @@ export function City() {
               <Building key={b.role.id} p={b} />
             ))}
           </Suspense>
+          <Links layout={layout} />
           <Trails layout={layout} />
         </>
       )}
@@ -140,14 +140,13 @@ export function City() {
         makeDefault
         enableDamping
         dampingFactor={0.08}
-        regress
         maxPolarAngle={Math.PI / 2.2}
         minDistance={25}
         maxDistance={260}
         target={[0, 9, 0]}
       />
-      <EffectComposer multisampling={2}>
-        <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.8} luminanceSmoothing={0.2} radius={0.7} />
+      <EffectComposer multisampling={4}>
+        <Bloom mipmapBlur intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />
         <Vignette offset={0.45} darkness={0.22} />
       </EffectComposer>
     </Canvas>
