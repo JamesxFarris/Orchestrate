@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { EventBus, type Org } from '@orchestrate/core';
-import type { EventInput, OrchestrateEvent, Plan, RunState, TaskContract, TaskState } from '@orchestrate/shared';
+import { computeProgress, EventBus, finishedAt, type Org, type ShipResult } from '@orchestrate/core';
+import type { EventInput, OrchestrateEvent, Plan, ProgressSnapshot, RunState, TaskContract, TaskState } from '@orchestrate/shared';
 import type { Backend } from './backend.ts';
 
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -41,10 +41,13 @@ export class DemoBackend implements Backend {
   private log = new Map<string, OrchestrateEvent[]>();
   private controllers = new Map<string, AbortController>();
   private approvals = new Map<string, () => void>();
+  private ships = new Map<string, { sha: string; at: number }>();
 
   constructor(
     readonly org: Org,
     private readonly speed = 1,
+    /** A completed demo project ships itself after this long unless Ship it was pressed first. */
+    private readonly autoShipMs = 10_000,
   ) {
     this.bus.on((e) => {
       if (e.runId) this.log.get(e.runId)?.push(e);
@@ -89,6 +92,35 @@ export class DemoBackend implements Backend {
   }
   events(runId: string) {
     return this.log.get(runId) ?? [];
+  }
+
+  /** No repository in demo mode: shipping is a simulated merge, so the whole loop is visible. */
+  async ship(runId: string): Promise<ShipResult> {
+    const done = this.ships.get(runId);
+    if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
+    if (this.runs.get(runId)?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    return { ok: true, sha: this.recordShip(runId, 'merged'), alreadyShipped: false, tested: false };
+  }
+
+  async markShipped(runId: string): Promise<boolean> {
+    if (this.runs.get(runId)?.status !== 'completed' || this.ships.has(runId)) return false;
+    this.recordShip(runId, 'marked');
+    return true;
+  }
+
+  progress(): ProgressSnapshot {
+    const facts = [...this.runs.values()].map((run) => {
+      const events = this.log.get(run.id) ?? [];
+      return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
+    });
+    return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));
+  }
+
+  private recordShip(runId: string, method: 'merged' | 'marked'): string {
+    const sha = randomBytes(20).toString('hex');
+    this.ships.set(runId, { sha, at: Date.now() });
+    this.emit({ type: 'run.shipped', runId, sha, method });
+    return sha;
   }
 
   private emit(e: EventInput) {
@@ -245,5 +277,6 @@ export class DemoBackend implements Backend {
     run.summary = `Demo run complete: ${run.tasks.length} tasks merged into ${run.integrationBranch}.`;
     this.emit({ type: 'run.summary', runId: run.id, summary: run.summary, followUps: [], branch: run.integrationBranch });
     this.status(run, 'completed', `${run.tasks.length}/${run.tasks.length} tasks merged`);
+    if (Number.isFinite(this.autoShipMs)) setTimeout(() => void this.ship(run.id), this.autoShipMs).unref?.();
   }
 }

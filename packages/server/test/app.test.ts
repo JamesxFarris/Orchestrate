@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Org, validatePlan } from '@orchestrate/core';
-import type { Plan, RunState } from '@orchestrate/shared';
+import type { Plan, ProgressSnapshot, RunState } from '@orchestrate/shared';
 import { buildApp } from '../src/app.ts';
 import { DemoBackend } from '../src/demo.ts';
 
@@ -97,3 +97,53 @@ async function until(cond: () => Promise<boolean>, timeoutMs = 10_000) {
     await new Promise((r) => setTimeout(r, 25));
   }
 }
+
+describe('shipping and progress API (demo backend)', () => {
+  async function finishedRun(autoShipMs: number) {
+    const backend = new DemoBackend(org, 200, autoShipMs);
+    const app = await buildApp({ backend });
+    close = () => app.close();
+    const shipped: string[] = [];
+    backend.bus.on((e) => e.type === 'run.shipped' && shipped.push(`${e.runId}:${e.method}`));
+    const id = (await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a basic wave spawner', autoApprove: true } })).json<RunState>().id;
+    await until(async () => (await app.inject({ url: `/api/runs/${id}` })).json<RunState>().status === 'completed', 20_000);
+    return { app, id, shipped };
+  }
+  const totals = (p: ProgressSnapshot) => ({
+    growth: p.districts.reduce((s, d) => s + d.growth, 0),
+    pending: p.districts.reduce((s, d) => s + d.pending, 0),
+  });
+
+  it('banks a finished project only when it ships, and ships once', async () => {
+    const { app, id, shipped } = await finishedRun(Infinity);
+    const before = totals((await app.inject({ url: '/api/progress' })).json<ProgressSnapshot>());
+    expect(before.growth).toBe(0);
+    expect(before.pending).toBeGreaterThan(0);
+
+    const res = await app.inject({ method: 'POST', url: `/api/runs/${id}/ship` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, alreadyShipped: false });
+
+    const after = totals((await app.inject({ url: '/api/state' })).json<{ progress: ProgressSnapshot }>().progress);
+    expect(after).toEqual({ growth: before.pending, pending: 0 });
+    expect((await app.inject({ method: 'POST', url: `/api/runs/${id}/ship` })).json()).toMatchObject({ ok: true, alreadyShipped: true });
+    expect((await app.inject({ method: 'POST', url: `/api/runs/${id}/mark-shipped` })).statusCode).toBe(409);
+    expect(shipped).toEqual([`${id}:merged`]);
+  });
+
+  it('explains why a project cannot ship', async () => {
+    const backend = new DemoBackend(org, 200, Infinity);
+    const app = await buildApp({ backend });
+    close = () => app.close();
+    const res = await app.inject({ method: 'POST', url: '/api/runs/nope/ship' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ reason: 'not-ready', error: expect.stringContaining('completed') });
+  });
+
+  it('harvests a finished demo project by itself when nobody presses Ship it', async () => {
+    const { app, id, shipped } = await finishedRun(30);
+    await until(async () => shipped.length > 0, 5_000);
+    expect(shipped).toEqual([`${id}:merged`]);
+    expect(totals((await app.inject({ url: '/api/progress' })).json<ProgressSnapshot>()).pending).toBe(0);
+  });
+});

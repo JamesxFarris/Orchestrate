@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { AgentRuntime, CircleReview, Plan, RunSummary, type OrchestrateEvent, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -16,7 +16,7 @@ import {
   masterSummarySystem,
 } from './prompts.ts';
 import { outputSchema, parseStructured } from './runner/structured.ts';
-import { computeProgress } from './progress/progress.ts';
+import { computeProgress, finishedAt } from './progress/progress.ts';
 import { READ_TOOLS, type AgentRunner } from './runner/types.ts';
 import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
 import type { ShipRecord, Store } from './store/store.ts';
@@ -137,12 +137,7 @@ export class Orchestrator {
       const events = this.store?.events(run.id) ?? [];
       return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
     });
-    const fallback = AgentRuntime.parse(this.org.config.defaults).maxBudgetUsd;
-    const budgetFor = (squad: string, kind: 'code' | 'research') => {
-      const role = this.org.implementer(squad, kind);
-      return role ? this.org.runtimeFor(role).maxBudgetUsd : fallback;
-    };
-    return computeProgress(facts, this.org.squads.map((s) => s.id), budgetFor);
+    return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));
   }
 
   private recordShip(runId: string, sha: string, method: ShipMethod): void {
@@ -428,13 +423,3 @@ export class Orchestrator {
   }
 }
 
-const TERMINAL = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
-
-/** When the run stopped executing, from its event history. */
-function finishedAt(events: readonly OrchestrateEvent[]): number | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i]!;
-    if (e.type === 'run.status' && TERMINAL.has(e.status)) return e.ts;
-  }
-  return undefined;
-}

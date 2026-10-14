@@ -1,5 +1,5 @@
-import type { EventBus, Org, Orchestrator, Store } from '@orchestrate/core';
-import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
+import type { EventBus, Org, Orchestrator, ShipResult, Store } from '@orchestrate/core';
+import type { OrchestrateEvent, ProgressSnapshot, RunState } from '@orchestrate/shared';
 
 /** What the HTTP layer needs. Implemented by the real orchestrator and by the demo simulator. */
 export interface Backend {
@@ -12,6 +12,11 @@ export interface Backend {
   get(runId: string): RunState | undefined;
   list(): RunState[];
   events(runId: string): OrchestrateEvent[];
+  /** Merge a completed run into the default branch (see core ship/ship.ts). */
+  ship(runId: string): Promise<ShipResult>;
+  /** Record a run as shipped by hand, for merges detection cannot see (squash, rebase). */
+  markShipped(runId: string): Promise<boolean>;
+  progress(): ProgressSnapshot;
 }
 
 export function liveBackend(orch: Orchestrator, store: Store): Backend {
@@ -25,5 +30,8 @@ export function liveBackend(orch: Orchestrator, store: Store): Backend {
     get: (id) => orch.get(id),
     list: () => orch.list(),
     events: (id) => store.events(id),
+    ship: (id) => orch.ship(id),
+    markShipped: (id) => orch.markShipped(id),
+    progress: () => orch.progress(),
   };
 }

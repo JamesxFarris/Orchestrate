@@ -116,6 +116,12 @@ export class Org {
     return AgentRuntime.parse({ ...this.config.defaults, ...role.runtime });
   }
 
+  /** One implementer invocation's budget: what a whole task must stay under to count as thrifty. */
+  implementerBudget(squadId: string, kind: 'code' | 'research'): number {
+    const role = this.implementer(squadId, kind);
+    return role ? this.runtimeFor(role).maxBudgetUsd : AgentRuntime.parse(this.config.defaults).maxBudgetUsd;
+  }
+
   private validate(): string[] {
     const problems: string[] = [];
     const ids = new Set<string>();

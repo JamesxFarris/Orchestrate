@@ -101,6 +101,17 @@ export function computeProgress(facts: readonly RunFacts[], squads: readonly str
   return { districts, runs };
 }
 
+const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+
+/** When a run stopped executing, from its event history. */
+export function finishedAt(events: readonly OrchestrateEvent[]): number | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.type === 'run.status' && TERMINAL.has(e.status)) return e.ts;
+  }
+  return undefined;
+}
+
 const round = (usd: number) => Math.round(usd * 1000) / 1000;
 
 function roman(n: number): string {
