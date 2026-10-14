@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { CircleReview, Plan, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -325,7 +325,7 @@ export class Orchestrator {
         }),
       );
       const changes = reviews.flatMap(({ role, review }) =>
-        review.verdict === 'revise' ? review.requiredChanges.map((c) => `[${role.title}] ${c}`) : [],
+        review.verdict === 'revise' ? review.requiredChanges.map((c) => `[${roleName(role, org.squads)}] ${c}`) : [],
       );
       const approved = changes.length === 0;
       this.bus.emit({ type: 'circle.adjourned', runId: run.id, approved });

@@ -56,7 +56,7 @@ server.registerTool(
   {
     title: 'Send a request to the Master',
     description:
-      'Hand a feature request or bug to the engineering team. The Head of Engineering plans it into scoped tasks, the Tech Circle reviews, and (after approval) squads implement with tests first. Watch progress in the City at the daemon URL.',
+      'Hand a feature request or bug to the engineering team. The VP of Engineering (the Master) plans it into scoped tasks, the Tech Circle reviews, and (after approval) squads implement with tests first. Watch progress in the City at the daemon URL.',
     inputSchema: {
       prompt: z.string().min(3).describe('What you want built or fixed, with any constraints.'),
       autoApprove: z.boolean().optional().describe('Skip the human plan-approval gate. Default false.'),

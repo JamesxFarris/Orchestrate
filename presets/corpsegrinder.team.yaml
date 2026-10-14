@@ -75,31 +75,31 @@ squads:
 
 roles:
   # --- HQ -----------------------------------------------------------------
-  - { id: head-of-eng, title: Head of Engineering, kind: master, tier: exec }
-  - { id: architect, title: Engineering Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
-  - { id: head-of-qa, title: Head of QA, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
+  - { id: head-of-eng, title: VP of Engineering, kind: master, tier: exec }
+  - { id: architect, title: Principal Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
+  - { id: head-of-qa, title: QA Manager, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
 
   # --- Gameplay -------------------------------------------------------------
-  - { id: gameplay-lead, title: Gameplay Lead, kind: lead, tier: lead, squad: gameplay, reportsTo: head-of-eng }
-  - { id: gameplay-dev, title: Gameplay Developer, kind: dev, tier: senior, squad: gameplay, reportsTo: gameplay-lead }
-  - { id: gameplay-qa, title: Gameplay QA Engineer, kind: qa, tier: ic, squad: gameplay, reportsTo: head-of-qa }
+  - { id: gameplay-lead, title: Tech Lead, kind: lead, tier: lead, squad: gameplay, reportsTo: head-of-eng }
+  - { id: gameplay-dev, title: Software Engineer, kind: dev, tier: senior, squad: gameplay, reportsTo: gameplay-lead }
+  - { id: gameplay-qa, title: QA Engineer, kind: qa, tier: ic, squad: gameplay, reportsTo: head-of-qa }
 
   # --- Core Engine ----------------------------------------------------------
-  - { id: engine-lead, title: Engine Lead, kind: lead, tier: lead, squad: engine, reportsTo: head-of-eng }
-  - { id: engine-dev, title: Engine Developer, kind: dev, tier: senior, squad: engine, reportsTo: engine-lead }
-  - { id: engine-qa, title: Engine QA Engineer, kind: qa, tier: ic, squad: engine, reportsTo: head-of-qa }
+  - { id: engine-lead, title: Tech Lead, kind: lead, tier: lead, squad: engine, reportsTo: head-of-eng }
+  - { id: engine-dev, title: Software Engineer, kind: dev, tier: senior, squad: engine, reportsTo: engine-lead }
+  - { id: engine-qa, title: QA Engineer, kind: qa, tier: ic, squad: engine, reportsTo: head-of-qa }
 
   # --- Render & UI ------------------------------------------------------------
-  - { id: render-lead, title: Render Lead, kind: lead, tier: lead, squad: render, reportsTo: head-of-eng }
-  - { id: render-dev, title: Render Developer, kind: dev, tier: senior, squad: render, reportsTo: render-lead }
-  - { id: render-qa, title: Render QA Engineer, kind: qa, tier: ic, squad: render, reportsTo: head-of-qa }
+  - { id: render-lead, title: Tech Lead, kind: lead, tier: lead, squad: render, reportsTo: head-of-eng }
+  - { id: render-dev, title: Software Engineer, kind: dev, tier: senior, squad: render, reportsTo: render-lead }
+  - { id: render-qa, title: QA Engineer, kind: qa, tier: ic, squad: render, reportsTo: head-of-qa }
 
   # --- Architecture -----------------------------------------------------------
-  - { id: research-lead, title: Architecture Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-lead, title: Tech Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
   - { id: research-analyst, title: Systems Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
 
   # --- Optional chapters (flip enabled: true to add them to the city) --------
-  - { id: head-of-product, title: Head of Product, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
-  - { id: head-of-design, title: Head of Design, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-product, title: Product Manager, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-design, title: Product Designer, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
 
 techCircle: [head-of-eng, architect, head-of-qa, gameplay-lead, engine-lead, render-lead, research-lead]

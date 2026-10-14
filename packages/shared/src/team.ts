@@ -2,15 +2,15 @@ import { z } from 'zod';
 
 /** What an agent does in the org. Drives prompts, tools and which pipeline phase it serves. */
 export const RoleKind = z.enum([
-  'master', // Head of Engineering: intake, planning, final summary
-  'architect', // Engineering Architect: contracts, cross-squad interfaces
-  'lead', // Squad Manager + Lead Dev: plan review, code review, escalations
-  'dev', // implements one task
-  'qa', // writes failing acceptance tests first
-  'qa_head', // Head of QA: test strategy, sits on the tech circle
+  'master', // VP of Engineering: intake, planning, final summary
+  'architect', // Principal Architect: contracts, cross-squad interfaces
+  'lead', // Tech Lead (manages a squad): plan review, code review, escalations
+  'dev', // Software Engineer: implements one task
+  'qa', // QA Engineer: writes failing acceptance tests first
+  'qa_head', // QA Manager: test strategy, sits on the tech circle
   'analyst', // Systems Analyst (Architecture squad): writes the design doc + ADR for "research" tasks; no code, no tests
-  'product', // optional: Head of Product / PM
-  'design', // optional: Head of Design / designer
+  'product', // optional: Product Manager
+  'design', // optional: Product Designer
 ]);
 export type RoleKind = z.infer<typeof RoleKind>;
 
@@ -118,3 +118,12 @@ export const TeamConfig = z.object({
 });
 export type TeamConfig = z.infer<typeof TeamConfig>;
 export type TeamConfigInput = z.input<typeof TeamConfig>;
+
+/**
+ * A role's name for display. Titles follow industry standards and repeat across squads (every squad
+ * has a "Tech Lead"), so the squad always travels with the title: "Tech Lead · Render & UI".
+ */
+export function roleName(role: { title: string; squad?: string }, squads: readonly { id: string; name: string }[]): string {
+  const squad = role.squad ? squads.find((s) => s.id === role.squad) : undefined;
+  return squad ? `${role.title} · ${squad.name}` : role.title;
+}

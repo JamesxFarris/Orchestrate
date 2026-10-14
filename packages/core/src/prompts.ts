@@ -21,8 +21,9 @@ const bullet = (xs: readonly string[]) => (xs.length ? xs.map((x) => `- ${x}`).j
 
 function identity(org: Org, role: RoleConfig): string {
   const p = org.project;
+  const squad = role.squad ? org.squads.find((s) => s.id === role.squad) : undefined;
   return [
-    `You are ${role.title} (${role.id}) on the ${p.name} engineering team.`,
+    `You are ${role.title}${squad ? ` in the ${squad.name} squad` : ''} (${role.id}) on the ${p.name} engineering team.`,
     `Project: ${p.description || p.name}. Primary language: ${p.language}.`,
     role.instructions ? `Standing instructions: ${role.instructions}` : '',
   ]
@@ -221,7 +222,7 @@ export function leadEscalationSystem(org: Org, role: RoleConfig, squadOwns: read
 One of your squad's agents escalated instead of finishing its task. Rule on it:
 - deny: the work can be done within the current scope. Give concrete guidance on how. Prefer this.
 - grant: the agent needs a little more write scope. List the minimal extra globs. They must stay inside your squad's ownership: ${squadOwns.join(', ')}.
-- replan: the task itself is wrong or belongs to another squad. Explain why, for the Head of Engineering.`;
+- replan: the task itself is wrong or belongs to another squad. Explain why, for the VP of Engineering.`;
 }
 
 export function leadEscalationPrompt(t: TaskContract, writeScope: readonly string[], kind: 'scope_change' | 'blocked', detail: string): string {

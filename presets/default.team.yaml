@@ -84,31 +84,31 @@ squads:
 
 roles:
   # --- HQ -----------------------------------------------------------------
-  - { id: head-of-eng, title: Head of Engineering, kind: master, tier: exec }
-  - { id: architect, title: Engineering Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
-  - { id: head-of-qa, title: Head of QA, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
+  - { id: head-of-eng, title: VP of Engineering, kind: master, tier: exec }
+  - { id: architect, title: Principal Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
+  - { id: head-of-qa, title: QA Manager, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
 
   # --- Frontend -------------------------------------------------------------
-  - { id: frontend-lead, title: Frontend Lead, kind: lead, tier: lead, squad: frontend, reportsTo: head-of-eng }
-  - { id: frontend-dev, title: Frontend Developer, kind: dev, tier: senior, squad: frontend, reportsTo: frontend-lead }
-  - { id: frontend-qa, title: Frontend QA Engineer, kind: qa, tier: ic, squad: frontend, reportsTo: head-of-qa }
+  - { id: frontend-lead, title: Tech Lead, kind: lead, tier: lead, squad: frontend, reportsTo: head-of-eng }
+  - { id: frontend-dev, title: Software Engineer, kind: dev, tier: senior, squad: frontend, reportsTo: frontend-lead }
+  - { id: frontend-qa, title: QA Engineer, kind: qa, tier: ic, squad: frontend, reportsTo: head-of-qa }
 
   # --- Backend --------------------------------------------------------------
-  - { id: backend-lead, title: Backend Lead, kind: lead, tier: lead, squad: backend, reportsTo: head-of-eng }
-  - { id: backend-dev, title: Backend Developer, kind: dev, tier: senior, squad: backend, reportsTo: backend-lead }
-  - { id: backend-qa, title: Backend QA Engineer, kind: qa, tier: ic, squad: backend, reportsTo: head-of-qa }
+  - { id: backend-lead, title: Tech Lead, kind: lead, tier: lead, squad: backend, reportsTo: head-of-eng }
+  - { id: backend-dev, title: Software Engineer, kind: dev, tier: senior, squad: backend, reportsTo: backend-lead }
+  - { id: backend-qa, title: QA Engineer, kind: qa, tier: ic, squad: backend, reportsTo: head-of-qa }
 
   # --- Platform -------------------------------------------------------------
-  - { id: platform-lead, title: Platform Lead, kind: lead, tier: lead, squad: platform, reportsTo: head-of-eng }
-  - { id: platform-dev, title: Platform Engineer, kind: dev, tier: senior, squad: platform, reportsTo: platform-lead }
-  - { id: platform-qa, title: Platform QA Engineer, kind: qa, tier: ic, squad: platform, reportsTo: head-of-qa }
+  - { id: platform-lead, title: Tech Lead, kind: lead, tier: lead, squad: platform, reportsTo: head-of-eng }
+  - { id: platform-dev, title: Software Engineer, kind: dev, tier: senior, squad: platform, reportsTo: platform-lead }
+  - { id: platform-qa, title: QA Engineer, kind: qa, tier: ic, squad: platform, reportsTo: head-of-qa }
 
   # --- Architecture -----------------------------------------------------------
-  - { id: research-lead, title: Architecture Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-lead, title: Tech Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
   - { id: research-analyst, title: Systems Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
 
   # --- Optional chapters (flip enabled: true to add them to the city) --------
-  - { id: head-of-product, title: Head of Product, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
-  - { id: head-of-design, title: Head of Design, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-product, title: Product Manager, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-design, title: Product Designer, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
 
 techCircle: [head-of-eng, architect, head-of-qa, frontend-lead, backend-lead, platform-lead, research-lead]
