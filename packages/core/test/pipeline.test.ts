@@ -265,3 +265,53 @@ async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
     await new Promise((r) => setTimeout(r, 20));
   }
 }
+
+describe('shipping and progression (real git)', () => {
+  const district = (env: ReturnType<typeof setup>, squad: string) => env.orch.progress().districts.find((d) => d.squad === squad)!;
+
+  it('Ship it lands a completed run on main as a merge commit and banks its growth', async () => {
+    const env = setup(team(sumPlan));
+    const run = await env.orch.wait(env.orch.submit('add a sum function').id);
+    const squad = run.tasks[0]!.contract.squad;
+    expect(run.integrationHead).toBe(sh(env.repo, 'rev-parse', run.integrationBranch!));
+    expect(district(env, squad)).toMatchObject({ growth: 0, pending: 200 });
+
+    const res = await env.orch.ship(run.id);
+
+    expect(res).toMatchObject({ ok: true, alreadyShipped: false, tested: false });
+    expect(sh(env.repo, 'rev-parse', 'main')).toBe(res.ok ? res.sha : '');
+    expect(existsSync(path.join(env.repo, 'src', 'sum.js'))).toBe(true);
+    expect(district(env, squad)).toMatchObject({ growth: 200, pending: 0, ships: 1, streak: 1 });
+    expect(env.events.filter((e) => e.type === 'run.shipped')).toEqual([expect.objectContaining({ runId: run.id, method: 'merged' })]);
+    expect(env.store.ships()).toHaveLength(1);
+    // shipping twice is harmless
+    expect(await env.orch.ship(run.id)).toMatchObject({ ok: true, alreadyShipped: true });
+    expect(env.events.filter((e) => e.type === 'run.shipped')).toHaveLength(1);
+  });
+
+  it('detects a run you merged yourself, once', async () => {
+    const env = setup(team(sumPlan));
+    const run = await env.orch.wait(env.orch.submit('add a sum function').id);
+    expect(await env.orch.checkShipped()).toEqual([]);
+
+    sh(env.repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'merge', '-q', '--no-ff', '-m', 'by hand', run.integrationBranch!);
+
+    expect(await env.orch.checkShipped()).toEqual([run.id]);
+    expect(await env.orch.checkShipped()).toEqual([]);
+    expect(env.events.filter((e) => e.type === 'run.shipped')).toEqual([expect.objectContaining({ runId: run.id, method: 'detected' })]);
+  });
+
+  it('can be marked as shipped by hand (after a squash merge), once', async () => {
+    const env = setup(team(sumPlan));
+    const run = await env.orch.wait(env.orch.submit('add a sum function').id);
+
+    expect(await env.orch.markShipped(run.id)).toBe(true);
+    expect(await env.orch.markShipped(run.id)).toBe(false);
+    expect(district(env, run.tasks[0]!.contract.squad)).toMatchObject({ growth: 200, ships: 1 });
+  });
+
+  it('refuses to ship a run that has not completed', async () => {
+    const env = setup(team(sumPlan));
+    expect(await env.orch.ship('no-such-run')).toMatchObject({ ok: false, reason: 'not-ready' });
+  });
+});

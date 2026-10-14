@@ -1,7 +1,14 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
+import type { OrchestrateEvent, RunState, ShipMethod } from '@orchestrate/shared';
+
+export interface ShipRecord {
+  runId: string;
+  sha: string;
+  at: number;
+  method: ShipMethod;
+}
 
 /** Durable record of runs and their full event history (for replaying a run in the city). */
 export class Store {
@@ -25,7 +32,24 @@ export class Store {
         body TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS events_run ON events(run_id, seq);
+      -- The one fact progression adds: when a run's work landed on the default branch.
+      CREATE TABLE IF NOT EXISTS ships (
+        run_id TEXT PRIMARY KEY,
+        sha TEXT NOT NULL,
+        shipped_at INTEGER NOT NULL,
+        method TEXT NOT NULL
+      );
     `);
+  }
+
+  /** First record wins: a run ships once. */
+  recordShip(s: ShipRecord): void {
+    this.db.prepare('INSERT OR IGNORE INTO ships (run_id, sha, shipped_at, method) VALUES (?, ?, ?, ?)').run(s.runId, s.sha, s.at, s.method);
+  }
+
+  ships(): ShipRecord[] {
+    const rows = this.db.prepare('SELECT run_id, sha, shipped_at, method FROM ships').all() as { run_id: string; sha: string; shipped_at: number; method: ShipMethod }[];
+    return rows.map((r) => ({ runId: r.run_id, sha: r.sha, at: r.shipped_at, method: r.method }));
   }
 
   saveRun(run: RunState): void {
