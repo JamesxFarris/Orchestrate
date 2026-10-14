@@ -3,7 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { connect } from './api.ts';
 import { City } from './scene/City.tsx';
 import { useCity } from './store.ts';
-import { AgentPanel, CameraBar, Legend, PlanDrawer, PromptBar, TaskBoard, TaskPanel, Ticker, TopBar } from './ui/Overlay.tsx';
+import { TaskBoard } from './ui/board/Board.tsx';
+import { AgentPanel, CameraBar, Legend, PlanDrawer, PromptBar, TaskPanel, Ticker, TopBar } from './ui/Overlay.tsx';
+// Fonts ship with the app: no third-party requests, and the HUD works offline.
+import '@fontsource-variable/fraunces/soft.css';
+import '@fontsource-variable/figtree';
+import '@fontsource/ibm-plex-mono/400.css';
 import './styles.css';
 
 function App() {

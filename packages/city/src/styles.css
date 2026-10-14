@@ -20,6 +20,26 @@
   --radius: 12px;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  /* Meadow: the cozy design system. Panels move onto these one by one (the task board first). */
+  --paper: #efe6d2;
+  --paper-raised: #f7f1e3;
+  --paper-deep: #e4d8be;
+  --edge: #d3c4a6;
+  --ink: #3b3328;
+  --ink-soft: #6b5e4c;
+  --moss: #5e7a4c;
+  --moss-ink: #3f5a30;
+  --moss-wash: #e3ead6;
+  --sun: #d4a24c;
+  --sun-ink: #8a6416;
+  --wilt: #9e4c31;
+  --wilt-ink: #8a3d24;
+  --wilt-wash: #f1d8cc;
+  --wilt-edge: #e0b9a8;
+  --display: 'Fraunces Variable', Georgia, serif;
+  --body: 'Figtree Variable', system-ui, sans-serif;
+  --code: 'IBM Plex Mono', 'Cascadia Code', ui-monospace, monospace;
 }
 
 * {
@@ -330,42 +350,290 @@ code {
 .taskboard {
   top: 92px;
   left: 16px;
-  width: min(340px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 32px));
 }
-.tasks {
+/* Paper tile with a solid drop instead of glass and blur. */
+.board {
+  padding: 14px 16px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--edge);
+  border-radius: 18px;
+  box-shadow: 0 5px 0 var(--edge), 0 14px 30px rgba(59, 51, 40, 0.16);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.board .collapsible__head {
+  font-weight: 700;
+  color: var(--moss-ink);
+}
+.board .collapsible__head:hover {
+  color: var(--ink);
+}
+.board .collapsible__head:focus-visible {
+  outline-color: var(--moss);
+}
+.board__counts {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-soft);
+}
+.board__counts-waiting {
+  font-weight: 700;
+  color: var(--wilt-ink);
+}
+.board__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.board__title {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.15;
+}
+.board__meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.board__tiles {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 4px;
   display: grid;
-  gap: 6px;
-}
-.task {
-  display: grid;
-  grid-template-columns: 4px 1fr auto;
   gap: 10px;
-  align-items: start;
-  padding: 8px 8px 8px 0;
+}
+.board__summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--edge);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+/* One tile per task. --squad comes from the team file; tints are mixed from it so any palette works. */
+.tile {
+  --squad: var(--ink-soft);
+  --tile-edge: color-mix(in srgb, var(--squad) 30%, var(--edge));
+}
+.tile__hit {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 12px 11px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: var(--paper-raised);
+  border: 1.5px solid var(--tile-edge);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--tile-edge);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.tile__hit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--tile-edge);
+}
+.tile__hit:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--tile-edge);
+}
+.tile__hit:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+.tile--stuck {
+  --tile-edge: var(--wilt-edge);
+}
+.tile--queued .tile__hit {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+}
+.tile__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tile__squad {
+  font-size: 12px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+}
+.tile__squad::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: var(--squad);
+}
+.tile__status {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+.tile__status--active {
+  background: color-mix(in srgb, var(--sun) 25%, var(--paper-raised));
+  color: var(--sun-ink);
+}
+.tile__status--stuck {
+  background: var(--wilt-wash);
+  color: var(--wilt-ink);
+}
+.tile__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.2;
+}
+.tile__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+.tile__agent {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.tile__avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--squad) 22%, var(--paper-raised));
+  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+}
+.tile__agent-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tile__who {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.tile__who b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.tile__progress {
+  font-size: 12.5px;
+}
+.tile__action {
+  font-family: var(--code);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile__callout {
+  padding: 7px 9px;
   border-radius: 8px;
-  cursor: default;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  background: #f8e9e1;
+  color: #5c2a1a;
 }
-.task:hover {
-  background: rgba(255, 255, 255, 0.6);
+.tile__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
-.task__squad {
-  align-self: stretch;
-  border-radius: 2px;
+.chip {
+  max-width: 100%;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
 }
-.task__title {
+.chip--ok {
+  background: var(--moss-wash);
+  color: var(--moss-ink);
+}
+.chip--bad {
+  background: var(--wilt-wash);
+  color: var(--wilt-ink);
+}
+.chip--code {
+  font-family: var(--code);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Finished work shrinks to one line so attention stays on what is still moving. */
+.tile--done {
+  --tile-edge: #c9d3b6;
+}
+.tile--done .tile__hit {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #eef2e6;
+}
+.tile__stage-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--moss);
+  color: var(--paper-raised);
+}
+.tile__done-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tile__done-title {
   font-weight: 600;
 }
-.task__meta {
-  color: var(--muted);
-  font-size: 11.5px;
+.tile__done-meta {
+  font-size: 12px;
+  color: var(--moss-ink);
 }
-.task__detail {
-  color: var(--danger);
-  font-size: 11.5px;
-  margin-top: 2px;
+@media (prefers-reduced-motion: reduce) {
+  .tile__hit {
+    transition: none;
+  }
+  .tile__hit:hover,
+  .tile__hit:active {
+    transform: none;
+  }
 }
 .status {
   --c: #64748b;
@@ -379,12 +647,6 @@ code {
   border-radius: 999px;
   padding: 2px 8px;
   white-space: nowrap;
-}
-.summary {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  white-space: pre-wrap;
 }
 
 /* ---------------------------------------------------------------- agent panel */

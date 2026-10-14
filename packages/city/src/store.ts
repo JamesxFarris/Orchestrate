@@ -184,6 +184,8 @@ export const useCity = create<CityState>((set, get) => ({
   },
 }));
 
+/** The run the HUD is showing: the newest one. */
+export const useCurrentRun = (): RunState | undefined => useCity((s) => (s.currentRunId ? s.runs[s.currentRunId] : undefined));
 
 export const ACTIVITY_LABEL: Record<AgentActivity, string> = {
   idle: 'Idle',
