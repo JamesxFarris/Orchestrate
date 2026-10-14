@@ -845,45 +845,10 @@ code {
   --accent: var(--payne);
   /* anchored bottom-centre above its building */
   transform: translate(-50%, calc(-100% - 6px));
-  transition: opacity 0.25s ease;
   width: max-content;
-}
-.label--hidden {
-  opacity: 0;
 }
 .label .tag {
   border-left-color: var(--accent);
-}
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--onyx);
-  white-space: nowrap;
-  background: rgba(242, 242, 243, 0.94);
-  border-radius: 999px;
-  padding: 3px 10px 3px 8px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 12px rgba(38, 44, 52, 0.22);
-}
-.pill svg {
-  color: color-mix(in srgb, var(--accent) 70%, var(--onyx));
-}
-.pill b {
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  background: color-mix(in srgb, var(--accent) 40%, white);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-.pill__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
 }
 .dot {
   display: grid;
@@ -899,6 +864,17 @@ code {
   color: #fff;
   background: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 18px var(--accent);
+  animation: dot-glow 1.8s ease-in-out infinite;
+}
+@keyframes dot-glow {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 20%, transparent), 0 0 26px var(--accent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot--active {
+    animation: none;
+  }
 }
 .card__hint {
   margin-top: 6px;

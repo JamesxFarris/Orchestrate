@@ -9,7 +9,6 @@ import { PALETTE } from '../palette.ts';
 import { useCity } from '../store.ts';
 import { Building } from './Building.tsx';
 import { CAMERA_LIMITS, CameraRig } from './CameraRig.tsx';
-import { LabelManager } from './labels.ts';
 import { Ground } from './Ground.tsx';
 import { Links } from './Links.tsx';
 import { Landmarks, PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
@@ -166,7 +165,6 @@ export function City() {
         target={[0, 9, 0]}
       />
       <CameraRig />
-      <LabelManager />
       {!off('fx') && (
       <EffectComposer multisampling={4}>
         <Bloom mipmapBlur intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />
