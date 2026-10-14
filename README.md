@@ -13,9 +13,21 @@ npm run build -w @orchestrate/city                    # build the city UI once
 # Demo mode: simulated runs, no API spend, no repo needed
 npm run daemon -- --demo                              # http://127.0.0.1:4317
 
-# Live mode: real agents on a real repo
+# Live mode: real agents on your own TypeScript web app (generic team)
+npm run daemon -- --team presets/default.team.yaml --repo ../your-app
+
+# Live mode with the CorpseGrinder game team
 npm run daemon -- --team presets/corpsegrinder.team.yaml --repo ../CorpseGrinder
 ```
+
+Before a live run on your own repo, open [presets/default.team.yaml](presets/default.team.yaml) and edit each squad's `owns` and `testDirs` to match your layout. They are the boundaries the orchestrator enforces. The file assumes `src/client`, `src/server`, `src/shared`, per-squad `tests/client`, `tests/server`, `tests/platform`, and `docs/` for design docs and ADRs. Also check that its `gates` commands (`npx tsc --noEmit`, `npx vitest run`) pass in your repo as-is.
+
+The target repo comes from `--repo` if you pass it, otherwise from `project.repoPath` in the team file. They resolve differently:
+
+- `--repo` resolves against the Orchestrate checkout, because npm runs scripts from there.
+- `project.repoPath` resolves against the team file's own directory, so in `presets/` it reads `../../your-app`.
+
+With neither set, the daemon exits with an error. Demo mode ignores both. Without `--team`, the daemon loads `presets/corpsegrinder.team.yaml`. You can also set `ORCH_TEAM` and `ORCH_REPO` instead of passing the flags.
 
 Open http://127.0.0.1:4317 and type a request into the prompt bar. While working on the UI, `npm run city` serves it with hot reload on :5173 and proxies to the daemon.
 
@@ -50,7 +62,12 @@ The MCP server talks to the daemon at `ORCH_URL` (default `http://127.0.0.1:4317
 | QA Engineers | **QA.** Writes failing acceptance tests *before* any implementation exists. |
 | Delivery Manager / Scrum | **Scheduler.** Plain code, not an LLM. |
 
-Squads, roles, models, effort, budgets, test commands and policy all live in a team file. See [presets/corpsegrinder.team.yaml](presets/corpsegrinder.team.yaml). Set `enabled: true` on Product or Design to add them to the city.
+Squads, roles, models, effort, budgets, test commands and policy all live in a team file. Two presets ship:
+
+- [presets/default.team.yaml](presets/default.team.yaml): a generic web-app team with Frontend, Backend, Platform and Architecture squads.
+- [presets/corpsegrinder.team.yaml](presets/corpsegrinder.team.yaml): a game team with Gameplay, Core Engine, Render & UI and Architecture squads.
+
+A test loads every `presets/*.team.yaml` through the real org loader, so a broken preset fails `npm test`. Set `enabled: true` on Product or Design to add them to the city.
 
 ## How drift is prevented
 
@@ -127,7 +144,7 @@ presets/          team files
 ## Tests
 
 ```bash
-npm test             # ~80 tests: scope guard, plan validation, scheduler, full pipeline on a real git fixture, API
+npm test             # ~90 tests: scope guard, plan validation, presets, scheduler, full pipeline on a real git fixture, API
 npm run typecheck
 ORCH_LIVE=1 npx vitest run packages/core/test/live.test.ts   # opt-in: one real agent, costs a few cents
 ```
