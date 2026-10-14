@@ -1,7 +1,8 @@
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Org } from '@orchestrate/core';
-import type { RunState } from '@orchestrate/shared';
+import { Org, validatePlan } from '@orchestrate/core';
+import type { Plan, RunState } from '@orchestrate/shared';
 import { buildApp } from '../src/app.ts';
 import { DemoBackend } from '../src/demo.ts';
 
@@ -64,6 +65,28 @@ describe('daemon API (demo backend)', () => {
     // a form/text post (no preflight) is not parsed as a run request
     const form = await app.inject({ method: 'POST', url: '/api/runs', headers: { 'content-type': 'text/plain' }, payload: 'prompt=hi' });
     expect(form.statusCode).toBeGreaterThanOrEqual(400);
+  });
+});
+
+const presetsDir = path.resolve(import.meta.dirname, '../../../presets');
+const presets = readdirSync(presetsDir).filter((f) => f.endsWith('.team.yaml'));
+
+describe('demo plan', () => {
+  // The simulated plan must pass the same deterministic checks a real Master's plan faces.
+  it.each(presets)('passes validatePlan for %s', async (file) => {
+    const teamOrg = Org.load(path.join(presetsDir, file));
+    const backend = new DemoBackend(teamOrg, 200);
+    let plan: Plan | undefined;
+    backend.bus.on((e) => {
+      if (e.type === 'plan.proposed') plan = e.plan;
+    });
+    const run = backend.submit('Add a basic wave spawner', {});
+    await until(async () => !!plan);
+    backend.cancel(run.id);
+    expect(validatePlan(plan!, teamOrg)).toEqual([]);
+    const spec = plan!.tasks.find((t) => t.kind === 'research');
+    expect(spec?.writeScope).toEqual(['docs/design/add-a-basic-wave-spawner.md', 'docs/adr/0001-add-a-basic-wave-spawner.md']);
+    expect(plan!.tasks.filter((t) => t.kind === 'code').every((t) => t.dependsOn.includes('spec'))).toBe(true);
   });
 });
 

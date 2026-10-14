@@ -45,7 +45,8 @@ The MCP server talks to the daemon at `ORCH_URL` (default `http://127.0.0.1:4317
 | Head of Engineering | **Master.** Plans, never writes code, writes the run report. |
 | Engineering Architect, Head of QA, Squad Leads | The **Tech Circle**, which reviews every plan before work starts. |
 | Squad Manager + Lead Dev | **Lead.** Reviews diffs and rules on escalations. |
-| Developers | **Dev / Analyst.** Implements exactly one contract. |
+| Developers | **Dev.** Implements exactly one contract. |
+| Architects (Architecture squad) | **Systems Analyst.** Designs before anyone codes. When work spans 2+ squads, adds a module or subsystem, or needs a design decision, the Master plans a spec task first. The analyst writes a design doc (`docs/design/<slug>.md`: goals, non-goals, module boundaries, cross-squad contracts, data flow, edge cases, testing notes) and an ADR (`docs/adr/NNNN-<slug>.md`: context, decision, rejected alternatives, consequences). The code tasks depend on it. Small single-squad changes skip it. |
 | QA Engineers | **QA.** Writes failing acceptance tests *before* any implementation exists. |
 | Delivery Manager / Scrum | **Scheduler.** Plain code, not an LLM. |
 

@@ -36,7 +36,7 @@ export function activityVerb(kind: string, activity: AgentActivity): string {
     case 'qa':
       return 'Writing tests';
     case 'analyst':
-      return activity === 'testing' ? 'Checking spec' : 'Researching';
+      return activity === 'testing' ? 'Checking design' : 'Designing';
     case 'dev':
       return activity === 'testing' ? 'Running gates' : 'Coding';
     default:

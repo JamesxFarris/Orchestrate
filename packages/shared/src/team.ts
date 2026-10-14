@@ -8,7 +8,7 @@ export const RoleKind = z.enum([
   'dev', // implements one task
   'qa', // writes failing acceptance tests first
   'qa_head', // Head of QA: test strategy, sits on the tech circle
-  'analyst', // research: reads reference code, writes specs
+  'analyst', // Systems Analyst (Architecture squad): writes the design doc + ADR for "research" tasks; no code, no tests
   'product', // optional: Head of Product / PM
   'design', // optional: Head of Design / designer
 ]);

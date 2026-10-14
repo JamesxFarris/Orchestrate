@@ -405,7 +405,7 @@ const ROLE_KEY: [string, string][] = [
   ['lead', 'Lead'],
   ['dev', 'Dev'],
   ['qa', 'QA'],
-  ['analyst', 'Research'],
+  ['analyst', 'Systems Analyst'],
 ];
 
 export function Legend() {
