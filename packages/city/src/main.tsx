@@ -4,6 +4,7 @@ import { connect } from './api.ts';
 import { City } from './scene/City.tsx';
 import { useCity } from './store.ts';
 import { TaskBoard } from './ui/board/Board.tsx';
+import { HarvestScreen } from './ui/harvest/HarvestScreen.tsx';
 import { AgentPanel, CameraBar, Legend, PlanDrawer, PromptBar, TaskPanel, Ticker, TopBar } from './ui/Overlay.tsx';
 // Fonts ship with the app: no third-party requests, and the HUD works offline.
 import '@fontsource-variable/fraunces/soft.css';
@@ -39,6 +40,7 @@ function App() {
       <PromptBar />
       <CameraBar />
       <PlanDrawer open={planOpen} onClose={() => setPlanOpen(false)} />
+      <HarvestScreen />
     </>
   );
 }

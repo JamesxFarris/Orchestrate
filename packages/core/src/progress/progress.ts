@@ -1,11 +1,11 @@
-import type { DistrictProgress, OrchestrateEvent, ProgressSnapshot, RunState, Settlement, TaskOutcome, TaskState } from '@orchestrate/shared';
+import { GROWTH, type DistrictProgress, type OrchestrateEvent, type ProgressSnapshot, type RunState, type Settlement, type TaskOutcome, type TaskState } from '@orchestrate/shared';
 
 /**
  * Progression rules. Pure functions over stored facts (runs, their events, when each run shipped):
  * nothing here is persisted, so changing a number below re-scores all history consistently.
  */
 
-export const GROWTH = { base: 100, firstTry: 50, noFuss: 25, thrifty: 25 } as const;
+export { GROWTH };
 
 const SETTLEMENTS = ['Hamlet', 'Village', 'Town', 'Borough', 'City'] as const;
 

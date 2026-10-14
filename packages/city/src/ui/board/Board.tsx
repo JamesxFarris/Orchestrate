@@ -1,8 +1,10 @@
+import type { RunState } from '@orchestrate/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { api } from '../../api.ts';
 import { useCity, useCurrentRun } from '../../store.ts';
 import { CollapsiblePanel } from '../CollapsiblePanel.tsx';
 import { RoleIcon } from '../roleIcons.tsx';
-import { buildBoard, type BoardTile, type Stage } from './buildBoard.ts';
+import { buildBoard, type BoardTile, type ShipStatus, type Stage } from './buildBoard.ts';
 
 const STAGE_WORD: Record<Stage, string> = {
   queued: 'queued',
@@ -82,7 +84,7 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
 
   if (tile.tone === 'done') {
     return (
-      <li className="tile tile--done" style={style}>
+      <li className={`tile tile--done phase--${tile.phase}`} style={style}>
         <button type="button" className="tile__hit" onClick={open} {...events}>
           <span className="tile__stage-dot">
             <StageIcon stage={tile.stage} />
@@ -93,6 +95,7 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
               {tile.squad.name} · {tile.status === 'merged' ? (tile.attempts <= 1 ? 'merged first try' : `merged on try ${tile.attempts}`) : tile.statusLabel}
             </span>
           </span>
+          {tile.growth !== undefined && <span className="tile__growth">+{tile.growth} growth</span>}
         </button>
       </li>
     );
@@ -100,11 +103,19 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
 
   const extraScope = tile.scope.length - 1;
   return (
-    <li className={`tile tile--${tile.tone}`} style={style}>
+    <li className={`tile tile--${tile.tone} phase--${tile.phase}`} style={style}>
       <button type="button" className="tile__hit" onClick={open} {...events}>
         <span className="tile__row">
           <span className="tile__squad">{tile.squad.name}</span>
-          <span className={`tile__status tile__status--${tile.tone}`}>{tile.statusLabel}</span>
+          {tile.district && (
+            <>
+              <span className="tile__town">{tile.district.name}</span>
+              <span className="tile__growbar" title={`${Math.round(tile.district.fraction * 100)}% of the way to the next size`}>
+                <span style={{ width: `${Math.round(tile.district.fraction * 100)}%` }} />
+              </span>
+            </>
+          )}
+          <span className="tile__status">{tile.statusLabel}</span>
         </span>
         <span className="tile__row">
           <span className="tile__title">{tile.title}</span>
@@ -154,13 +165,126 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
   );
 }
 
+/**
+ * The bottom of the board: growth so far while running, Ship it once complete, harvested after.
+ * Shipping asks once before merging; a refusal shows git's reason and output, and nothing changes.
+ */
+function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
+  const [step, setStep] = useState<'idle' | 'confirm' | 'mark' | 'busy'>('idle');
+  const [error, setError] = useState<{ message: string; output?: string }>();
+
+  if (ship.state === 'none') return null;
+  if (ship.state === 'shipped') {
+    return (
+      <div className="shipbar shipbar--done">
+        <span className="tile__stage-dot">
+          <StageIcon stage="bloom" />
+        </span>
+        <span>
+          Harvested <b>{ship.growth} growth</b>. This project is in your main branch.
+        </span>
+      </div>
+    );
+  }
+  if (ship.state === 'growing') {
+    return (
+      <div className="shipbar">
+        <StageIcon stage="sprout" size={16} />
+        <span>
+          <b>{ship.growth} growth</b> so far, harvested when you ship.
+        </span>
+      </div>
+    );
+  }
+
+  const act = async (what: 'ship' | 'mark') => {
+    setStep('busy');
+    setError(undefined);
+    try {
+      const res = what === 'ship' ? await api.ship(run.id) : await api.markShipped(run.id).then(() => ({ ok: true as const }));
+      // On success the run.shipped event refreshes progress, which flips this bar to "harvested".
+      if (!res.ok) {
+        setError(res);
+        setStep('idle');
+      }
+    } catch (e) {
+      setError({ message: (e as Error).message });
+      setStep('idle');
+    }
+  };
+
+  return (
+    <div className="shipbar shipbar--ready">
+      <span>
+        Ready to ship: <b>{ship.growth} growth</b> waiting to be harvested.
+      </span>
+      {step === 'confirm' && (
+        <span className="shipbar__explain">
+          This merges <code>{run.integrationBranch}</code> into your main branch as a merge commit, with your name on it. If main changed since the project started, the full test suite runs first. If anything is wrong, nothing changes.
+        </span>
+      )}
+      {step === 'mark' && <span className="shipbar__explain">Only if this work is already in your main branch, for example from a squash merge. This records it as shipped without merging anything.</span>}
+      {step === 'busy' ? (
+        <span className="shipbar__busy" role="status">
+          Shipping: merging and checking…
+        </span>
+      ) : (
+        <span className="shipbar__actions">
+          {step === 'idle' && (
+            <>
+              <button type="button" className="btn-ship" onClick={() => setStep('confirm')}>
+                Ship it…
+              </button>
+              <button type="button" className="btn-quiet" onClick={() => setStep('mark')}>
+                Merged it another way?
+              </button>
+            </>
+          )}
+          {step === 'confirm' && (
+            <>
+              <button type="button" className="btn-ship" onClick={() => void act('ship')}>
+                Ship it
+              </button>
+              <button type="button" className="btn-quiet" onClick={() => setStep('idle')}>
+                Not yet
+              </button>
+            </>
+          )}
+          {step === 'mark' && (
+            <>
+              <button type="button" className="btn-ship" onClick={() => void act('mark')}>
+                Mark as shipped
+              </button>
+              <button type="button" className="btn-quiet" onClick={() => setStep('idle')}>
+                Cancel
+              </button>
+            </>
+          )}
+        </span>
+      )}
+      {error && (
+        <span className="shipbar__error" role="alert">
+          {error.message}
+          {error.output && (
+            <details>
+              <summary>Details from git</summary>
+              <pre>{error.output}</pre>
+            </details>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** The run as one tile per task: who is on it, what they are doing, and what is stuck. */
 export function TaskBoard() {
   const run = useCurrentRun();
   const team = useCity((s) => s.team);
   const agents = useCity((s) => s.agents);
   const events = useCity((s) => s.events);
-  const model = useMemo(() => (run && team ? buildBoard(run, agents, events, team) : undefined), [run, agents, events, team]);
+  const progress = useCity((s) => s.progress);
+  const model = useMemo(() => (run && team ? buildBoard(run, agents, events, team, progress) : undefined), [run, agents, events, team, progress]);
   const now = useNow(!!model?.tiles.some((t) => t.agent));
   if (!run || !model || model.tiles.length === 0) return null;
   const { counts } = model;
@@ -189,6 +313,7 @@ export function TaskBoard() {
           <Tile key={`${run.id}:${t.taskId}`} tile={t} now={now} />
         ))}
       </ol>
+      <ShipBar key={run.id} run={run} ship={model.ship} />
       {run.summary && <div className="board__summary">{run.summary}</div>}
     </CollapsiblePanel>
   );

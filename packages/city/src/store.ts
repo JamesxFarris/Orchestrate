@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 export { ACTIVITY_COLOR, TASK_COLOR } from './palette.ts';
-import type { AgentActivity, AgentSnapshot, OrchestrateEvent, RunState, TaskStatus } from '@orchestrate/shared';
+import type { AgentActivity, AgentSnapshot, OrchestrateEvent, ProgressSnapshot, RunState, TaskStatus } from '@orchestrate/shared';
+import type { LevelUp } from './ui/harvest/harvest.ts';
 
 export interface TeamRole {
   id: string;
@@ -60,6 +61,12 @@ interface CityState {
   waveAt?: number;
   /** Latest camera request from the HUD or a double-click; seq makes repeats re-trigger. */
   cameraCmd?: CameraCmd;
+  /** Districts' growth, from the daemon (derived there, never computed here). */
+  progress?: ProgressSnapshot;
+  /** The Harvest screen, open after a project ships. */
+  harvest?: { runId: string; levelUps: LevelUp[] };
+  setProgress(p: ProgressSnapshot): void;
+  openHarvest(h?: { runId: string; levelUps: LevelUp[] }): void;
   setTeam(t: Team): void;
   setConnected(c: boolean): void;
   hydrate(agents: AgentSnapshot[], runs: RunState[]): void;
@@ -92,6 +99,8 @@ export const useCity = create<CityState>((set, get) => ({
   circleActive: false,
 
   setTeam: (team) => set({ team }),
+  setProgress: (progress) => set({ progress }),
+  openHarvest: (harvest) => set({ harvest }),
   setConnected: (connected) => set({ connected }),
 
   hydrate: (agents, runs) =>

@@ -1,4 +1,4 @@
-import type { AgentSnapshot, OrchestrateEvent, RunState, TaskContract, TaskState } from '@orchestrate/shared';
+import type { AgentSnapshot, OrchestrateEvent, ProgressSnapshot, RunState, TaskContract, TaskState } from '@orchestrate/shared';
 import { describe, expect, it } from 'vitest';
 import type { Team } from '../src/store.ts';
 import { buildBoard, describeAction } from '../src/ui/board/buildBoard.ts';
@@ -174,5 +174,67 @@ describe('buildBoard: header counts and squads', () => {
     const [a, b] = buildBoard(r, {}, [], team).tiles;
     expect(a!.squad).toEqual({ id: 'render', name: 'Render & UI', color: '#f2a541' });
     expect(b!.squad).toMatchObject({ id: 'ghost', name: 'ghost' });
+  });
+});
+
+describe('buildBoard: progression', () => {
+  const settlement = (level: number, name: string, into: number, needed: number) => ({ level, name, into, needed });
+  const progress = (shippedAt?: number): ProgressSnapshot => ({
+    districts: [
+      { squad: 'render', growth: 340, pending: 200, settlement: settlement(2, 'Village', 140, 300), settlementAfterPending: settlement(3, 'Town', 40, 400), streak: 2, ships: 2 },
+      { squad: 'engine', growth: 0, pending: 0, settlement: settlement(1, 'Hamlet', 0, 200), settlementAfterPending: settlement(1, 'Hamlet', 0, 200), streak: 0, ships: 0 },
+    ],
+    runs: [
+      {
+        runId: 'run-1',
+        shippedAt,
+        outcomes: [
+          { taskId: 'a', squad: 'render', merged: true, firstTry: true, noFuss: true, thrifty: true, costUsd: 1, growth: 200 },
+          { taskId: 'b', squad: 'engine', merged: false, firstTry: true, noFuss: true, thrifty: true, costUsd: 0, growth: 0 },
+        ],
+      },
+    ],
+  });
+
+  it("gives each tile its district's settlement and how far along it is", () => {
+    const r = run([task('a', 'render', 'merged'), task('b', 'engine', 'in_progress')]);
+    const tiles = buildBoard(r, {}, [], team, progress()).tiles;
+    expect(tiles.find((t) => t.taskId === 'b')!.district).toEqual({ name: 'Hamlet', level: 1, fraction: 0 });
+    expect(tiles.find((t) => t.taskId === 'a')!.district).toMatchObject({ name: 'Village', level: 2, fraction: 140 / 300 });
+  });
+
+  it('shows the growth a merged task earned', () => {
+    const r = run([task('a', 'render', 'merged'), task('b', 'engine', 'in_progress')]);
+    const tiles = buildBoard(r, {}, [], team, progress()).tiles;
+    expect(tiles.find((t) => t.taskId === 'a')!.growth).toBe(200);
+    expect(tiles.find((t) => t.taskId === 'b')!.growth).toBeUndefined();
+  });
+
+  it('is ready to ship once completed, and remembers when it has shipped', () => {
+    const done = { ...run([task('a', 'render', 'merged')]), status: 'completed' as const };
+    expect(buildBoard(done, {}, [], team, progress()).ship).toEqual({ state: 'ready', growth: 200 });
+    expect(buildBoard(done, {}, [], team, progress(99)).ship).toEqual({ state: 'shipped', growth: 200 });
+    expect(buildBoard(run([task('a', 'render', 'in_progress')]), {}, [], team, progress()).ship).toEqual({ state: 'growing', growth: 200 });
+    expect(buildBoard({ ...done, status: 'failed' }, {}, [], team, progress()).ship).toEqual({ state: 'none', growth: 200 });
+  });
+
+  it('works without progress (older daemon, or still loading)', () => {
+    const [tile] = buildBoard(run([task('a', 'render', 'merged')]), {}, [], team).tiles;
+    expect(tile!.district).toBeUndefined();
+    expect(buildBoard(run([task('a', 'render', 'merged')]), {}, [], team).ship).toEqual({ state: 'growing', growth: 0 });
+  });
+});
+
+describe('buildBoard: phase (what the colour means)', () => {
+  it('gives every status its own phase, and anything stuck the stuck phase', () => {
+    const statuses: TaskState['status'][] = ['pending', 'red', 'in_progress', 'verifying', 'review', 'merged', 'escalated', 'failed', 'skipped'];
+    const r = run(statuses.map((s, i) => task(`t${i}`, 'render', s)));
+    const byId = new Map(buildBoard(r, {}, [], team).tiles.map((t) => [t.taskId, t.phase]));
+    expect(statuses.map((_, i) => byId.get(`t${i}`))).toEqual(['queued', 'tests', 'building', 'checks', 'review', 'merged', 'stuck', 'stuck', 'skipped']);
+  });
+
+  it('marks a task stuck while its agent waits on the lead', () => {
+    const r = run([task('b', 'engine', 'in_progress')]);
+    expect(buildBoard(r, { 'engine-dev': agent('engine-dev', 'b', 'blocked') }, [], team).tiles[0]!.phase).toBe('stuck');
   });
 });

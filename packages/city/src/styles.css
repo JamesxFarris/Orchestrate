@@ -37,6 +37,15 @@
   --wilt-ink: #8a3d24;
   --wilt-wash: #f1d8cc;
   --wilt-edge: #e0b9a8;
+  /* One colour per phase of work, so a run's state reads at a glance (task board). */
+  --phase-queued: #8b7d66;
+  --phase-tests: #2f74a8;
+  --phase-building: #c98a1c;
+  --phase-checks: #2c8580;
+  --phase-review: #7a5cb2;
+  --phase-merged: #4f8a33;
+  --phase-stuck: #b8462a;
+  --phase-skipped: #a39377;
   --display: 'Fraunces Variable', Georgia, serif;
   --body: 'Figtree Variable', system-ui, sans-serif;
   --code: 'IBM Plex Mono', 'Cascadia Code', ui-monospace, monospace;
@@ -420,10 +429,36 @@ code {
   white-space: pre-wrap;
 }
 
-/* One tile per task. --squad comes from the team file; tints are mixed from it so any palette works. */
+/* One tile per task. Colour means status (--st, from the phase); the squad is only its small labelled square. */
 .tile {
   --squad: var(--ink-soft);
-  --tile-edge: color-mix(in srgb, var(--squad) 30%, var(--edge));
+  --st: var(--phase-queued);
+  --st-ink: color-mix(in srgb, var(--st) 45%, var(--ink));
+  --tile-edge: var(--edge);
+}
+.phase--queued {
+  --st: var(--phase-queued);
+}
+.phase--tests {
+  --st: var(--phase-tests);
+}
+.phase--building {
+  --st: var(--phase-building);
+}
+.phase--checks {
+  --st: var(--phase-checks);
+}
+.phase--review {
+  --st: var(--phase-review);
+}
+.phase--merged {
+  --st: var(--phase-merged);
+}
+.phase--stuck {
+  --st: var(--phase-stuck);
+}
+.phase--skipped {
+  --st: var(--phase-skipped);
 }
 .tile__hit {
   display: flex;
@@ -437,6 +472,7 @@ code {
   cursor: pointer;
   background: var(--paper-raised);
   border: 1.5px solid var(--tile-edge);
+  border-left: 5px solid var(--st);
   border-radius: 14px;
   box-shadow: 0 3px 0 var(--tile-edge);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -469,7 +505,7 @@ code {
 .tile__squad {
   font-size: 12px;
   font-weight: 700;
-  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+  color: var(--ink-soft);
 }
 .tile__squad::before {
   content: '';
@@ -487,16 +523,8 @@ code {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-  background: var(--paper-deep);
-  color: var(--ink-soft);
-}
-.tile__status--active {
-  background: color-mix(in srgb, var(--sun) 25%, var(--paper-raised));
-  color: var(--sun-ink);
-}
-.tile__status--stuck {
-  background: var(--wilt-wash);
-  color: var(--wilt-ink);
+  background: color-mix(in srgb, var(--st) 16%, var(--paper-raised));
+  color: var(--st-ink);
 }
 .tile__title {
   flex: 1;
@@ -512,8 +540,9 @@ code {
   align-items: center;
   gap: 4px;
   font-size: 11.5px;
+  font-weight: 600;
   white-space: nowrap;
-  color: var(--ink-soft);
+  color: var(--st-ink);
 }
 .tile__agent {
   display: flex;
@@ -527,8 +556,9 @@ code {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--squad) 22%, var(--paper-raised));
-  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+  background: color-mix(in srgb, var(--st) 18%, var(--paper-raised));
+  color: color-mix(in srgb, var(--st) 60%, var(--ink));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--st) 45%, transparent);
 }
 .tile__agent-body {
   flex: 1;
@@ -594,15 +624,12 @@ code {
   white-space: nowrap;
 }
 /* Finished work shrinks to one line so attention stays on what is still moving. */
-.tile--done {
-  --tile-edge: #c9d3b6;
-}
 .tile--done .tile__hit {
   flex-direction: row;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: #eef2e6;
+  background: color-mix(in srgb, var(--st) 8%, var(--paper-raised));
 }
 .tile__stage-dot {
   flex: none;
@@ -611,7 +638,7 @@ code {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--moss);
+  background: var(--st, var(--moss));
   color: var(--paper-raised);
 }
 .tile__done-text {
@@ -624,7 +651,7 @@ code {
 }
 .tile__done-meta {
   font-size: 12px;
-  color: var(--moss-ink);
+  color: var(--st-ink);
 }
 @media (prefers-reduced-motion: reduce) {
   .tile__hit {
@@ -1182,3 +1209,296 @@ code {
   }
 }
 
+
+/* ---------------------------------------------------------------- progression: districts, Ship it, Harvest */
+/* District size beside the squad name: neutral, so colour on a tile always means status. */
+.tile__town {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+.tile__growbar {
+  display: flex;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+.tile__growbar > span {
+  background: var(--moss);
+}
+.tile__growth {
+  margin-left: auto;
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #dbe5cc;
+  color: var(--moss-ink);
+}
+
+.shipbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  border: 1.5px dashed var(--edge);
+  color: var(--ink-soft);
+}
+.shipbar b {
+  color: var(--ink);
+}
+.shipbar svg {
+  color: var(--moss);
+}
+.shipbar--ready {
+  flex-direction: column;
+  align-items: stretch;
+  border-style: solid;
+  border-color: #c9d3b6;
+  background: var(--paper-raised);
+  box-shadow: 0 3px 0 #c9d3b6;
+}
+.shipbar--done {
+  border-style: solid;
+  border-color: #c9d3b6;
+  background: #eef2e6;
+  color: var(--moss-ink);
+}
+.shipbar__explain {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.shipbar__explain code,
+.harvest code {
+  font-family: var(--code);
+  font-size: 11.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--paper-deep);
+}
+.shipbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shipbar__busy {
+  font-weight: 600;
+  color: var(--sun-ink);
+}
+.shipbar__error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8e9e1;
+  color: #5c2a1a;
+}
+.shipbar__error summary {
+  margin-top: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.shipbar__error pre {
+  max-height: 160px;
+  overflow: auto;
+  margin: 6px 0 0;
+  font: 11px/1.4 var(--code);
+  white-space: pre-wrap;
+}
+/* The one bold control: a pressable tile, like the board's own. */
+.btn-ship {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font: 600 13px var(--body);
+  cursor: pointer;
+  color: var(--paper-raised);
+  background: var(--moss);
+  border: 1.5px solid var(--moss-ink);
+  box-shadow: 0 3px 0 var(--moss-ink);
+}
+.btn-ship:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--moss-ink);
+}
+.btn-quiet {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font: 600 12.5px var(--body);
+  cursor: pointer;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1.5px solid var(--edge);
+}
+.btn-ship:focus-visible,
+.btn-quiet:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+
+.harvest-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(59, 51, 40, 0.35);
+}
+.harvest {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--edge);
+  border-radius: 20px;
+  box-shadow: 0 6px 0 var(--edge), 0 24px 60px rgba(59, 51, 40, 0.3);
+}
+.harvest__eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--moss-ink);
+}
+.harvest__title {
+  margin: 0;
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.harvest__sub {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.harvest__table-wrap {
+  overflow-x: auto;
+  padding: 4px 14px;
+  border-radius: 14px;
+  background: var(--paper-raised);
+  border: 1.5px solid var(--edge);
+  box-shadow: 0 3px 0 var(--edge);
+}
+.harvest__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.harvest__table th,
+.harvest__table td {
+  padding: 8px 4px;
+  text-align: right;
+  border-bottom: 1px solid #e6dcc6;
+}
+.harvest__table tr:last-child th,
+.harvest__table tr:last-child td {
+  border-bottom: 0;
+}
+.harvest__table thead th {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  border-bottom: 1.5px dashed var(--edge);
+}
+.harvest__table th:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+.harvest__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  border-radius: 3px;
+  background: var(--squad);
+}
+.harvest__plus {
+  color: var(--moss-ink);
+}
+.harvest__none {
+  color: #8b7d66;
+}
+.harvest__growth {
+  font-weight: 700;
+}
+.harvest__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 4px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.harvest__total b {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 26px;
+  color: var(--moss-ink);
+}
+.harvest__levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.harvest__level {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--squad) 14%, var(--paper-raised));
+  border: 1.5px solid color-mix(in srgb, var(--squad) 40%, var(--edge));
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--squad) 40%, var(--edge));
+}
+.harvest__level-squad {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+}
+.harvest__level b {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 17px;
+}
+.harvest__level-was,
+.harvest__streaks {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.harvest__streaks {
+  margin: 0;
+}
+.harvest__streaks b {
+  color: var(--ink);
+}
+.harvest__close {
+  align-self: flex-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-ship:active {
+    transform: none;
+  }
+}

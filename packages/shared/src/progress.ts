@@ -3,6 +3,9 @@
  * each run shipped); everything here is derived from them, so changing a rule re-scores history.
  */
 
+/** Growth a merged task earns, and its bonuses. */
+export const GROWTH = { base: 100, firstTry: 50, noFuss: 25, thrifty: 25 } as const;
+
 /** How one task scored. Bonuses only count when the task merged. */
 export interface TaskOutcome {
   taskId: string;
