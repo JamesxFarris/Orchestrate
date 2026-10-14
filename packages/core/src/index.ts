@@ -6,5 +6,6 @@ export { SdkRunner } from './runner/sdkRunner.ts';
 export { FakeRunner, type FakeAgentContext, type FakeHandler, type FakeReply } from './runner/fakeRunner.ts';
 export type { AgentRunner, AgentInvocation, AgentResult, AgentSignal } from './runner/types.ts';
 export { validatePlan } from './plan/validatePlan.ts';
+export { computeProgress, settlementFor, taskOutcome, GROWTH, type BudgetFor, type RunFacts } from './progress/progress.ts';
 export { schedule, topoOrder } from './plan/dag.ts';
 export { createScopeGuard, commandPattern, type ScopeGuardConfig } from './scope/scopeGuard.ts';
