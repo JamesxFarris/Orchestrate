@@ -73,15 +73,6 @@ code {
   max-height: calc(100vh - 200px);
   overflow: auto;
 }
-.panel__title {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
 .panel__close {
   position: absolute;
   top: 8px;
@@ -99,6 +90,75 @@ code {
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- collapsible panels */
+/* The body scrolls instead of the aside, so the header never leaves view.
+   Must follow .panel so this overflow wins. */
+.collapsible {
+  --collapsible-gap: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.collapsible__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.collapsible__head:hover {
+  color: var(--text);
+}
+.collapsible__head:focus-visible {
+  outline: 2px solid var(--cerulean);
+  outline-offset: 2px;
+}
+.collapsible__chevron {
+  width: 1em;
+  text-align: center;
+  letter-spacing: 0;
+}
+.collapsible__title {
+  flex: 1;
+}
+.collapsible__body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+/* 1fr -> 0fr animates to the content's real height without measuring it. */
+.collapsible__fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.16s ease, visibility 0s;
+}
+.collapsible__inner {
+  min-height: 0;
+  padding-top: var(--collapsible-gap);
+}
+/* visibility flips after the fold so hidden content leaves the tab order and a11y tree. */
+.collapsible--collapsed .collapsible__fold {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 0.16s ease, visibility 0s 0.16s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible .collapsible__fold {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------- top bar */
@@ -458,16 +518,19 @@ code {
   gap: 2px;
 }
 .legend {
+  --collapsible-gap: 6px;
   position: fixed;
   right: 16px;
   bottom: calc(92px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  gap: 12px;
   padding: 7px 12px;
   font-size: 11.5px;
   color: var(--muted);
-  flex-wrap: wrap;
   max-width: min(470px, calc(100vw - 32px));
+}
+.legend__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .legend i {
   display: inline-block;
@@ -736,7 +799,7 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  flex-basis: 100%;
+  margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
 }
