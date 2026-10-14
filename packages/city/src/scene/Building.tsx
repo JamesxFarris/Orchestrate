@@ -7,7 +7,6 @@ import { PALETTE } from '../palette.ts';
 import { ACTIVITY_COLOR, useCity } from '../store.ts';
 import { activityVerb, RoleIcon } from '../ui/roleIcons.tsx';
 import { MODEL_URL } from './archetypes.ts';
-import { lodFor, registerBlocker, registerLabel, unregisterBlocker, unregisterLabel, type LabelLod } from './labels.ts';
 import { activityWeights, createGlassMaterial, glassUniforms } from './windowMaterial.ts';
 
 const PLAZA_Y = 0.24;
@@ -146,27 +145,9 @@ export function Building({ p }: { p: Placement }) {
   activeColor.set(active ? ACTIVITY_COLOR[activity] : p.accent);
   const beacon = useRef<THREE.MeshBasicMaterial>(null);
   const ring = useRef<THREE.MeshBasicMaterial>(null);
-  const hitbox = useRef<THREE.Mesh>(null);
-  const labelEl = useRef<HTMLDivElement>(null);
-  const [lod, setLod] = useState<LabelLod>('mid');
-  const anchor = useMemo(() => new THREE.Vector3(p.x, PLAZA_Y + arch.top + 2, p.z), [p.x, p.z, arch.top]);
-  const label = useRef(registerLabel({ id: p.role.id, anchor, priority: 0, focus: false, w: 100, h: 26 }));
-  useEffect(() => {
-    label.current = registerLabel({ id: p.role.id, anchor, priority: 0, focus: false, w: 100, h: 26 });
-    if (hitbox.current) registerBlocker(p.role.id, hitbox.current);
-    return () => {
-      unregisterLabel(p.role.id);
-      unregisterBlocker(p.role.id);
-    };
-  }, [p.role.id, anchor]);
   const groundGlow = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame((state, dt) => {
-    // label: level of detail by distance; visibility from the label manager (no React render per frame)
-    const nextLod = lodFor(label.current.distance || 200);
-    if (nextLod !== lod) setLod(nextLod);
-    labelEl.current?.classList.toggle('label--hidden', !label.current.visible);
-
     const k = 1 - Math.exp(-dt * 3);
     const t = state.clock.elapsedTime;
     const flashAge = agent?.flashAt ? (performance.now() - agent.flashAt) / 1000 : 99;
@@ -198,22 +179,11 @@ export function Building({ p }: { p: Placement }) {
   const pad = arch.footprint * 0.62 + 1.4;
   const verb = activityVerb(p.role.kind, activity);
   const focus = hover || selected;
-  // what the label shows: focus > full card up close > compact pill mid-range > icon dot far out
-  const mode = focus ? 'focus' : lod === 'near' ? (active ? 'card' : 'tag') : lod === 'mid' ? (active ? 'pill' : 'tag') : 'dot';
+  // Main towers (HQ, and the leads on the circle rim) always label themselves; squad members show an icon.
+  // Nothing is ever hidden: where labels overlap, zIndexRange below decides which draws on top.
+  const isMain = !p.squad || p.role.kind === 'lead';
+  const mode = focus ? 'focus' : isMain ? (active ? 'card' : 'tag') : 'dot';
   const accent = active ? ACTIVITY_COLOR[activity] : p.accent;
-
-  // keep the label manager's view of this label current: importance and on-screen size per mode
-  const isHead = ['master', 'lead', 'architect', 'qa_head'].includes(p.role.kind);
-  label.current.focus = focus;
-  label.current.priority = focus ? 100 : (active ? 50 : 0) + (activity === 'blocked' ? 10 : 0) + (isHead ? 20 : 10);
-  const SIZE: Record<string, [number, number]> = {
-    focus: [292, 170],
-    card: [232, 122],
-    pill: [(p.role.title.length + verb.length) * 6.6 + 64, 28],
-    tag: [p.role.title.length * 7 + 40, 26],
-    dot: [30, 26],
-  };
-  [label.current.w, label.current.h] = SIZE[mode]!;
 
   return (
     <group position={[p.x, 0, p.z]}>
@@ -240,7 +210,6 @@ export function Building({ p }: { p: Placement }) {
 
       {/* Cheap invisible hit-box: picking against the detailed model costs ~20k triangle tests per mouse move. */}
       <mesh
-        ref={hitbox}
         position-y={PLAZA_Y + arch.top / 2}
         onClick={(e: { stopPropagation(): void }) => {
           e.stopPropagation();
@@ -269,14 +238,14 @@ export function Building({ p }: { p: Placement }) {
         <meshBasicMaterial ref={beacon} toneMapped={false} />
       </mesh>
 
-      {/* Fixed on-screen size; detail follows camera distance; hidden when blocked or crowded out. */}
+      {/* Fixed on-screen size; what it shows follows the role and activity (see mode). */}
       <Html
         key={mode} // drei only re-stacks on camera moves; remount to apply the new layer
         position={[0, PLAZA_Y + arch.top + 2, 0]}
         zIndexRange={focus ? [1400, 1300] : active ? [900, 500] : [400, 0]}
         style={{ pointerEvents: 'none' }}
       >
-        <div ref={labelEl} className="label" style={{ ['--accent' as string]: accent }}>
+        <div className="label" style={{ ['--accent' as string]: accent }}>
           {mode === 'focus' || mode === 'card' ? (
             <div className={`card card--${activity} ${focus ? 'card--focus' : ''}`}>
               <div className="card__head">
@@ -295,13 +264,6 @@ export function Building({ p }: { p: Placement }) {
                 </div>
               )}
               {focus && <div className="card__hint">Double-click to fly here</div>}
-            </div>
-          ) : mode === 'pill' ? (
-            <div className="pill">
-              <span className="pill__dot" />
-              <RoleIcon kind={p.role.kind} size={12} />
-              <span>{p.role.title}</span>
-              <b>{verb}</b>
             </div>
           ) : mode === 'tag' ? (
             <div className="tag">

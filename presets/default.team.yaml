@@ -1,0 +1,114 @@
+# Default team: a generic TypeScript web app (frontend + backend + shared code), Vitest for tests.
+#
+# EDIT `owns` AND `testDirs` BELOW TO MATCH YOUR REPO. They are the hard boundaries the orchestrator
+# enforces: an agent can only write inside its squad's `owns`, and QA's tests must sit in `testDirs`.
+# This file assumes a single-package layout:
+#
+#   src/client/   frontend (UI, components, styles)      -> Frontend
+#   src/server/   backend (API, services, data access)   -> Backend
+#   src/shared/   types and helpers both sides import    -> Platform
+#   tests/client/ tests/server/ tests/platform/          -> each squad's QA
+#   docs/         design docs + ADRs                     -> Architecture
+#   build, CI and tool config at the root                -> Platform
+#
+# A monorepo maps the same way, e.g. Frontend owns apps/web/**, Backend owns apps/api/**, Platform owns
+# packages/shared/** and the root config. Tests live in their own directories rather than next to the
+# source so a dev's write scope (src/client/**) never covers QA's test files.
+#
+# Run it:  npm run daemon -- --team presets/default.team.yaml --repo ../your-app
+version: 1
+
+project:
+  name: My App                          # shown in every prompt and in the city
+  language: TypeScript
+  # repoPath: ../../your-app            # relative to THIS file; --repo on the command line wins
+  defaultBranch: main
+  # description: One or two sentences on what the app does. Injected into every agent's prompt.
+  testGlobs:
+    - "tests/**/*.test.ts"
+    - "tests/**/*.test.tsx"
+  linkDirs:
+    - node_modules                      # junctioned into each task's worktree instead of reinstalling
+
+defaults:
+  model: claude-opus-5-5
+  effort: high
+  maxTurns: 40
+  maxBudgetUsd: 4
+  timeoutMs: 1200000
+
+# Every gate must pass in your repo as-is, or every task will fail. Remove lines you don't have.
+gates:
+  typecheck: npx tsc --noEmit
+  # lint: npx eslint .
+  test: npx vitest run
+  testFiles: npx vitest run {files}
+  full: npx vitest run
+  timeoutMs: 600000
+
+policy:
+  maxRetries: 2
+  maxChangedLines: 400
+  circleRevisionRounds: 2
+  requireHumanApproval: true
+  maxParallel: 3
+
+squads:
+  - id: frontend
+    name: Frontend
+    color: "#f2a541"
+    mission: User interface — pages, components, client state, styling, and calls to the backend API.
+    owns: ["src/client/**", "public/**", "index.html"]
+    testDirs: ["tests/client/**"]
+  - id: backend
+    name: Backend
+    color: "#1985a1"
+    mission: Server — API routes, business logic, validation, persistence and integrations.
+    owns: ["src/server/**"]
+    testDirs: ["tests/server/**"]
+  - id: platform
+    name: Platform
+    color: "#9b5de5"
+    mission: Build, CI, configuration and shared infrastructure — the shared types and helpers both sides import, scripts, and tool config.
+    owns: ["src/shared/**", "scripts/**", ".github/**", "package.json", "tsconfig*.json", "*.config.*"]
+    testDirs: ["tests/platform/**"]
+  # Architecture keeps the squad id "research" used by every preset, so runs and tooling see one id.
+  - id: research
+    name: Architecture
+    color: "#7fb7be"
+    mission: >-
+      Design before code. When work spans squads, adds a module or needs a design decision, write a design
+      doc (docs/design/) and an ADR (docs/adr/) fixing the module boundaries and the contracts other squads
+      build against.
+    owns: ["docs/**"]
+
+roles:
+  # --- HQ -----------------------------------------------------------------
+  - { id: head-of-eng, title: Head of Engineering, kind: master, tier: exec }
+  - { id: architect, title: Engineering Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
+  - { id: head-of-qa, title: Head of QA, kind: qa_head, tier: principal, reportsTo: head-of-eng, runtime: { effort: medium } }
+
+  # --- Frontend -------------------------------------------------------------
+  - { id: frontend-lead, title: Frontend Lead, kind: lead, tier: lead, squad: frontend, reportsTo: head-of-eng }
+  - { id: frontend-dev, title: Frontend Developer, kind: dev, tier: senior, squad: frontend, reportsTo: frontend-lead }
+  - { id: frontend-qa, title: Frontend QA Engineer, kind: qa, tier: ic, squad: frontend, reportsTo: head-of-qa }
+
+  # --- Backend --------------------------------------------------------------
+  - { id: backend-lead, title: Backend Lead, kind: lead, tier: lead, squad: backend, reportsTo: head-of-eng }
+  - { id: backend-dev, title: Backend Developer, kind: dev, tier: senior, squad: backend, reportsTo: backend-lead }
+  - { id: backend-qa, title: Backend QA Engineer, kind: qa, tier: ic, squad: backend, reportsTo: head-of-qa }
+
+  # --- Platform -------------------------------------------------------------
+  - { id: platform-lead, title: Platform Lead, kind: lead, tier: lead, squad: platform, reportsTo: head-of-eng }
+  - { id: platform-dev, title: Platform Engineer, kind: dev, tier: senior, squad: platform, reportsTo: platform-lead }
+  - { id: platform-qa, title: Platform QA Engineer, kind: qa, tier: ic, squad: platform, reportsTo: head-of-qa }
+
+  # --- Architecture -----------------------------------------------------------
+  - { id: research-lead, title: Architecture Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-analyst, title: Systems Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
+
+  # --- Optional chapters (flip enabled: true to add them to the city) --------
+  - { id: head-of-product, title: Head of Product, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-design, title: Head of Design, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
+
+techCircle: [head-of-eng, architect, head-of-qa, frontend-lead, backend-lead, platform-lead, research-lead]

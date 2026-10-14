@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
 import { api } from '../api.ts';
-import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity } from '../store.ts';
+import { CollapsiblePanel } from './CollapsiblePanel.tsx';
+import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity, useCurrentRun } from '../store.ts';
 import { RoleIcon } from './roleIcons.tsx';
-
-const useCurrentRun = (): RunState | undefined => useCity((s) => (s.currentRunId ? s.runs[s.currentRunId] : undefined));
 
 const STATUS_LABEL: Record<RunState['status'], string> = {
   planning: 'Planning',
@@ -66,42 +65,6 @@ export function TopBar({ onOpenPlan }: { onOpenPlan: () => void }) {
         </div>
       )}
     </header>
-  );
-}
-
-export function TaskBoard() {
-  const run = useCurrentRun();
-  const highlight = useCity((s) => s.highlight);
-  const team = useCity((s) => s.team);
-  if (!run || run.tasks.length === 0) return null;
-  const squadColor = (id: string) => team?.squads.find((s) => s.id === id)?.color ?? '#94a3b8';
-  const merged = run.tasks.filter((t) => t.status === 'merged').length;
-
-  return (
-    <aside className="panel taskboard">
-      <div className="panel__title">
-        Task board <span className="muted">{merged}/{run.tasks.length} merged</span>
-      </div>
-      <ol className="tasks">
-        {run.tasks.map((t) => (
-          <li key={t.contract.id} className="task" onMouseEnter={() => highlight(t.contract.id)} onMouseLeave={() => highlight(undefined)} onClick={() => useCity.getState().selectTask(t.contract.id)} style={{ cursor: 'pointer' }}>
-            <span className="task__squad" style={{ background: squadColor(t.contract.squad) }} />
-            <div className="task__body">
-              <div className="task__title">{t.contract.title}</div>
-              <div className="task__meta">
-                {t.contract.squad} · {t.contract.kind}
-                {t.attempts > 1 ? ` · attempt ${t.attempts}` : ''}
-              </div>
-              {t.detail && ['escalated', 'failed'].includes(t.status) && <div className="task__detail">{t.detail}</div>}
-            </div>
-            <span className="status" style={{ ['--c' as string]: TASK_COLOR[t.status] }}>
-              {TASK_LABEL[t.status]}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {run.summary && <div className="summary">{run.summary}</div>}
-    </aside>
   );
 }
 
@@ -398,22 +361,24 @@ const ROLE_KEY: [string, string][] = [
   ['lead', 'Lead'],
   ['dev', 'Dev'],
   ['qa', 'QA'],
-  ['analyst', 'Research'],
+  ['analyst', 'Systems Analyst'],
 ];
 
 export function Legend() {
   return (
-    <div className="legend">
-      {(['working', 'testing', 'reviewing', 'blocked'] as const).map((a) => (
-        <span key={a}>
-          <i style={{ background: ACTIVITY_COLOR[a] }} />
-          {ACTIVITY_LABEL[a]}
+    <CollapsiblePanel id="legend" title="Legend" className="legend">
+      <div className="legend__swatches">
+        {(['working', 'testing', 'reviewing', 'blocked'] as const).map((a) => (
+          <span key={a}>
+            <i style={{ background: ACTIVITY_COLOR[a] }} />
+            {ACTIVITY_LABEL[a]}
+          </span>
+        ))}
+        <span>
+          <i style={{ background: ACTIVITY_COLOR_MERGED }} />
+          Merged
         </span>
-      ))}
-      <span>
-        <i style={{ background: ACTIVITY_COLOR_MERGED }} />
-        Merged
-      </span>
+      </div>
       <div className="legend__roles">
         {ROLE_KEY.map(([kind, label]) => (
           <span key={kind}>
@@ -422,7 +387,7 @@ export function Legend() {
           </span>
         ))}
       </div>
-    </div>
+    </CollapsiblePanel>
   );
 }
 

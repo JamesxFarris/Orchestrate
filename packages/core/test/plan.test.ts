@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Plan, TaskContract, TaskStatus } from '@orchestrate/shared';
@@ -66,6 +67,45 @@ describe('Org (corpsegrinder preset)', () => {
       expect(problems).toMatch(/squad "a" has no enabled dev/);
       expect(problems).toMatch(/techCircle member "missing"/);
     }
+  });
+});
+
+describe('presets', () => {
+  const dir = path.resolve(import.meta.dirname, '../../../presets');
+  const files = readdirSync(dir).filter((f) => f.endsWith('.team.yaml'));
+
+  it('finds the shipped presets', () => {
+    expect(files).toEqual(expect.arrayContaining(['corpsegrinder.team.yaml', 'default.team.yaml']));
+  });
+
+  // A preset that fails the real loader would crash the daemon on start, so none may ship broken.
+  it.each(files)('%s loads through the org loader with no problems', (file) => {
+    let problems: string[] = [];
+    let loaded: Org | undefined;
+    try {
+      loaded = Org.load(path.join(dir, file));
+    } catch (e) {
+      problems = e instanceof TeamConfigError ? e.problems : [String(e)];
+    }
+    expect(problems).toEqual([]);
+    for (const s of loaded!.squads) expect(loaded!.squadRole(s.id, 'lead'), `squad "${s.id}" lead`).toBeDefined();
+    expect(loaded!.circle().map((r) => r.id)).toEqual(loaded!.config.techCircle);
+  });
+
+  it('default preset: ownership globs fit a typical full-stack plan', () => {
+    const def = Org.load(path.join(dir, 'default.team.yaml'));
+    const good = plan(
+      task({ id: 'design', squad: 'research', kind: 'research', writeScope: ['docs/design/auth.md', 'docs/adr/0001-auth.md'], testFiles: [] }),
+      task({ id: 'types', squad: 'platform', writeScope: ['src/shared/auth.ts'], testFiles: ['tests/platform/auth.test.ts'], dependsOn: ['design'] }),
+      task({ id: 'ci', squad: 'platform', writeScope: ['.github/workflows/ci.yml', 'vite.config.ts'], testFiles: ['tests/platform/ci.test.ts'] }),
+      task({ id: 'api', squad: 'backend', writeScope: ['src/server/auth/**'], testFiles: ['tests/server/auth.test.ts'], dependsOn: ['types'] }),
+      task({ id: 'ui', squad: 'frontend', writeScope: ['src/client/login/**'], testFiles: ['tests/client/login.test.tsx'], dependsOn: ['types'] }),
+    );
+    expect(validatePlan(good, def)).toEqual([]);
+    const crossed = task({ id: 'x', squad: 'frontend', writeScope: ['src/server/**'], testFiles: ['tests/server/x.test.ts'] });
+    const problems = validatePlan(plan(crossed), def).join('\n');
+    expect(problems).toMatch(/outside squad "frontend" ownership/);
+    expect(problems).toMatch(/not a test path for squad "frontend"/);
   });
 });
 

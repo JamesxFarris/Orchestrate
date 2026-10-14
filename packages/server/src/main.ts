@@ -21,6 +21,7 @@ const { values } = parseArgs({
 const teamFile = path.resolve(values.team!);
 const org = Org.load(teamFile);
 let backend: Backend;
+let stopShipWatch = () => {};
 
 if (values.demo) {
   backend = new DemoBackend(org, Number(values.speed) || 1);
@@ -32,6 +33,8 @@ if (values.demo) {
   const store = new Store(path.resolve(values.db!));
   const orch = new Orchestrator({ org, runner: new SdkRunner(), repoRoot, store });
   backend = liveBackend(orch, store);
+  // Fallback for projects merged outside Orchestrate: one cheap check a minute.
+  stopShipWatch = orch.watchShips();
   console.log(`[orchestrate] target repo: ${repoRoot}`);
 }
 
@@ -42,6 +45,7 @@ console.log(`[orchestrate] ${backend.mode} mode · team "${org.project.name}" ($
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
+    stopShipWatch();
     for (const r of backend.list()) if (!['completed', 'failed', 'cancelled'].includes(r.status)) backend.cancel(r.id);
     void app.close().then(() => process.exit(0));
   });

@@ -20,6 +20,35 @@
   --radius: 12px;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  /* Meadow: the cozy design system. Panels move onto these one by one (the task board first). */
+  --paper: #efe6d2;
+  --paper-raised: #f7f1e3;
+  --paper-deep: #e4d8be;
+  --edge: #d3c4a6;
+  --ink: #3b3328;
+  --ink-soft: #6b5e4c;
+  --moss: #5e7a4c;
+  --moss-ink: #3f5a30;
+  --moss-wash: #e3ead6;
+  --sun: #d4a24c;
+  --sun-ink: #8a6416;
+  --wilt: #9e4c31;
+  --wilt-ink: #8a3d24;
+  --wilt-wash: #f1d8cc;
+  --wilt-edge: #e0b9a8;
+  /* One colour per phase of work, so a run's state reads at a glance (task board). */
+  --phase-queued: #8b7d66;
+  --phase-tests: #2f74a8;
+  --phase-building: #c98a1c;
+  --phase-checks: #2c8580;
+  --phase-review: #7a5cb2;
+  --phase-merged: #4f8a33;
+  --phase-stuck: #b8462a;
+  --phase-skipped: #a39377;
+  --display: 'Fraunces Variable', Georgia, serif;
+  --body: 'Figtree Variable', system-ui, sans-serif;
+  --code: 'IBM Plex Mono', 'Cascadia Code', ui-monospace, monospace;
 }
 
 * {
@@ -73,15 +102,6 @@ code {
   max-height: calc(100vh - 200px);
   overflow: auto;
 }
-.panel__title {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
 .panel__close {
   position: absolute;
   top: 8px;
@@ -99,6 +119,75 @@ code {
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- collapsible panels */
+/* The body scrolls instead of the aside, so the header never leaves view.
+   Must follow .panel so this overflow wins. */
+.collapsible {
+  --collapsible-gap: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.collapsible__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.collapsible__head:hover {
+  color: var(--text);
+}
+.collapsible__head:focus-visible {
+  outline: 2px solid var(--cerulean);
+  outline-offset: 2px;
+}
+.collapsible__chevron {
+  width: 1em;
+  text-align: center;
+  letter-spacing: 0;
+}
+.collapsible__title {
+  flex: 1;
+}
+.collapsible__body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+/* 1fr -> 0fr animates to the content's real height without measuring it. */
+.collapsible__fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.16s ease, visibility 0s;
+}
+.collapsible__inner {
+  min-height: 0;
+  padding-top: var(--collapsible-gap);
+}
+/* visibility flips after the fold so hidden content leaves the tab order and a11y tree. */
+.collapsible--collapsed .collapsible__fold {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 0.16s ease, visibility 0s 0.16s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible .collapsible__fold {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------- top bar */
@@ -270,42 +359,308 @@ code {
 .taskboard {
   top: 92px;
   left: 16px;
-  width: min(340px, calc(100vw - 32px));
+  width: min(400px, calc(100vw - 32px));
 }
-.tasks {
+/* Paper tile with a solid drop instead of glass and blur. */
+.board {
+  padding: 14px 16px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--edge);
+  border-radius: 18px;
+  box-shadow: 0 5px 0 var(--edge), 0 14px 30px rgba(59, 51, 40, 0.16);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.board .collapsible__head {
+  font-weight: 700;
+  color: var(--moss-ink);
+}
+.board .collapsible__head:hover {
+  color: var(--ink);
+}
+.board .collapsible__head:focus-visible {
+  outline-color: var(--moss);
+}
+.board__counts {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-soft);
+}
+.board__counts-waiting {
+  font-weight: 700;
+  color: var(--wilt-ink);
+}
+.board__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.board__title {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.15;
+}
+.board__meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.board__tiles {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 4px;
   display: grid;
-  gap: 6px;
-}
-.task {
-  display: grid;
-  grid-template-columns: 4px 1fr auto;
   gap: 10px;
-  align-items: start;
-  padding: 8px 8px 8px 0;
+}
+.board__summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--edge);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+/* One tile per task. Colour means status (--st, from the phase); the squad is only its small labelled square. */
+.tile {
+  --squad: var(--ink-soft);
+  --st: var(--phase-queued);
+  --st-ink: color-mix(in srgb, var(--st) 45%, var(--ink));
+  --tile-edge: var(--edge);
+}
+.phase--queued {
+  --st: var(--phase-queued);
+}
+.phase--tests {
+  --st: var(--phase-tests);
+}
+.phase--building {
+  --st: var(--phase-building);
+}
+.phase--checks {
+  --st: var(--phase-checks);
+}
+.phase--review {
+  --st: var(--phase-review);
+}
+.phase--merged {
+  --st: var(--phase-merged);
+}
+.phase--stuck {
+  --st: var(--phase-stuck);
+}
+.phase--skipped {
+  --st: var(--phase-skipped);
+}
+.tile__hit {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 12px 11px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: var(--paper-raised);
+  border: 1.5px solid var(--tile-edge);
+  border-left: 5px solid var(--st);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--tile-edge);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.tile__hit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--tile-edge);
+}
+.tile__hit:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--tile-edge);
+}
+.tile__hit:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+.tile--stuck {
+  --tile-edge: var(--wilt-edge);
+}
+.tile--queued .tile__hit {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+}
+.tile__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tile__squad {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.tile__squad::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: var(--squad);
+}
+.tile__status {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--st) 16%, var(--paper-raised));
+  color: var(--st-ink);
+}
+.tile__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.2;
+}
+.tile__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--st-ink);
+}
+.tile__agent {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.tile__avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--st) 18%, var(--paper-raised));
+  color: color-mix(in srgb, var(--st) 60%, var(--ink));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--st) 45%, transparent);
+}
+.tile__agent-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tile__who {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.tile__who b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.tile__progress {
+  font-size: 12.5px;
+}
+.tile__action {
+  font-family: var(--code);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile__callout {
+  padding: 7px 9px;
   border-radius: 8px;
-  cursor: default;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  background: #f8e9e1;
+  color: #5c2a1a;
 }
-.task:hover {
-  background: rgba(255, 255, 255, 0.6);
+.tile__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
-.task__squad {
-  align-self: stretch;
-  border-radius: 2px;
+.chip {
+  max-width: 100%;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
 }
-.task__title {
+.chip--ok {
+  background: var(--moss-wash);
+  color: var(--moss-ink);
+}
+.chip--bad {
+  background: var(--wilt-wash);
+  color: var(--wilt-ink);
+}
+.chip--code {
+  font-family: var(--code);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Finished work shrinks to one line so attention stays on what is still moving. */
+.tile--done .tile__hit {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--st) 8%, var(--paper-raised));
+}
+.tile__stage-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--st, var(--moss));
+  color: var(--paper-raised);
+}
+.tile__done-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tile__done-title {
   font-weight: 600;
 }
-.task__meta {
-  color: var(--muted);
-  font-size: 11.5px;
+.tile__done-meta {
+  font-size: 12px;
+  color: var(--st-ink);
 }
-.task__detail {
-  color: var(--danger);
-  font-size: 11.5px;
-  margin-top: 2px;
+@media (prefers-reduced-motion: reduce) {
+  .tile__hit {
+    transition: none;
+  }
+  .tile__hit:hover,
+  .tile__hit:active {
+    transform: none;
+  }
 }
 .status {
   --c: #64748b;
@@ -319,12 +674,6 @@ code {
   border-radius: 999px;
   padding: 2px 8px;
   white-space: nowrap;
-}
-.summary {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  white-space: pre-wrap;
 }
 
 /* ---------------------------------------------------------------- agent panel */
@@ -458,16 +807,19 @@ code {
   gap: 2px;
 }
 .legend {
+  --collapsible-gap: 6px;
   position: fixed;
   right: 16px;
   bottom: calc(92px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  gap: 12px;
   padding: 7px 12px;
   font-size: 11.5px;
   color: var(--muted);
-  flex-wrap: wrap;
   max-width: min(470px, calc(100vw - 32px));
+}
+.legend__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .legend i {
   display: inline-block;
@@ -736,7 +1088,7 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  flex-basis: 100%;
+  margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
 }
@@ -782,45 +1134,10 @@ code {
   --accent: var(--payne);
   /* anchored bottom-centre above its building */
   transform: translate(-50%, calc(-100% - 6px));
-  transition: opacity 0.25s ease;
   width: max-content;
-}
-.label--hidden {
-  opacity: 0;
 }
 .label .tag {
   border-left-color: var(--accent);
-}
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--onyx);
-  white-space: nowrap;
-  background: rgba(242, 242, 243, 0.94);
-  border-radius: 999px;
-  padding: 3px 10px 3px 8px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 12px rgba(38, 44, 52, 0.22);
-}
-.pill svg {
-  color: color-mix(in srgb, var(--accent) 70%, var(--onyx));
-}
-.pill b {
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  background: color-mix(in srgb, var(--accent) 40%, white);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-.pill__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
 }
 .dot {
   display: grid;
@@ -836,6 +1153,17 @@ code {
   color: #fff;
   background: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 18px var(--accent);
+  animation: dot-glow 1.8s ease-in-out infinite;
+}
+@keyframes dot-glow {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 20%, transparent), 0 0 26px var(--accent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot--active {
+    animation: none;
+  }
 }
 .card__hint {
   margin-top: 6px;
@@ -881,3 +1209,296 @@ code {
   }
 }
 
+
+/* ---------------------------------------------------------------- progression: districts, Ship it, Harvest */
+/* District size beside the squad name: neutral, so colour on a tile always means status. */
+.tile__town {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+.tile__growbar {
+  display: flex;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+.tile__growbar > span {
+  background: var(--moss);
+}
+.tile__growth {
+  margin-left: auto;
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #dbe5cc;
+  color: var(--moss-ink);
+}
+
+.shipbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  border: 1.5px dashed var(--edge);
+  color: var(--ink-soft);
+}
+.shipbar b {
+  color: var(--ink);
+}
+.shipbar svg {
+  color: var(--moss);
+}
+.shipbar--ready {
+  flex-direction: column;
+  align-items: stretch;
+  border-style: solid;
+  border-color: #c9d3b6;
+  background: var(--paper-raised);
+  box-shadow: 0 3px 0 #c9d3b6;
+}
+.shipbar--done {
+  border-style: solid;
+  border-color: #c9d3b6;
+  background: #eef2e6;
+  color: var(--moss-ink);
+}
+.shipbar__explain {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.shipbar__explain code,
+.harvest code {
+  font-family: var(--code);
+  font-size: 11.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--paper-deep);
+}
+.shipbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shipbar__busy {
+  font-weight: 600;
+  color: var(--sun-ink);
+}
+.shipbar__error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8e9e1;
+  color: #5c2a1a;
+}
+.shipbar__error summary {
+  margin-top: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.shipbar__error pre {
+  max-height: 160px;
+  overflow: auto;
+  margin: 6px 0 0;
+  font: 11px/1.4 var(--code);
+  white-space: pre-wrap;
+}
+/* The one bold control: a pressable tile, like the board's own. */
+.btn-ship {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font: 600 13px var(--body);
+  cursor: pointer;
+  color: var(--paper-raised);
+  background: var(--moss);
+  border: 1.5px solid var(--moss-ink);
+  box-shadow: 0 3px 0 var(--moss-ink);
+}
+.btn-ship:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--moss-ink);
+}
+.btn-quiet {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font: 600 12.5px var(--body);
+  cursor: pointer;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1.5px solid var(--edge);
+}
+.btn-ship:focus-visible,
+.btn-quiet:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+
+.harvest-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(59, 51, 40, 0.35);
+}
+.harvest {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--edge);
+  border-radius: 20px;
+  box-shadow: 0 6px 0 var(--edge), 0 24px 60px rgba(59, 51, 40, 0.3);
+}
+.harvest__eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--moss-ink);
+}
+.harvest__title {
+  margin: 0;
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.harvest__sub {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.harvest__table-wrap {
+  overflow-x: auto;
+  padding: 4px 14px;
+  border-radius: 14px;
+  background: var(--paper-raised);
+  border: 1.5px solid var(--edge);
+  box-shadow: 0 3px 0 var(--edge);
+}
+.harvest__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.harvest__table th,
+.harvest__table td {
+  padding: 8px 4px;
+  text-align: right;
+  border-bottom: 1px solid #e6dcc6;
+}
+.harvest__table tr:last-child th,
+.harvest__table tr:last-child td {
+  border-bottom: 0;
+}
+.harvest__table thead th {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  border-bottom: 1.5px dashed var(--edge);
+}
+.harvest__table th:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+.harvest__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  border-radius: 3px;
+  background: var(--squad);
+}
+.harvest__plus {
+  color: var(--moss-ink);
+}
+.harvest__none {
+  color: #8b7d66;
+}
+.harvest__growth {
+  font-weight: 700;
+}
+.harvest__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 4px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.harvest__total b {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 26px;
+  color: var(--moss-ink);
+}
+.harvest__levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.harvest__level {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--squad) 14%, var(--paper-raised));
+  border: 1.5px solid color-mix(in srgb, var(--squad) 40%, var(--edge));
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--squad) 40%, var(--edge));
+}
+.harvest__level-squad {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--squad) 40%, var(--ink));
+}
+.harvest__level b {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 600;
+  font-size: 17px;
+}
+.harvest__level-was,
+.harvest__streaks {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.harvest__streaks {
+  margin: 0;
+}
+.harvest__streaks b {
+  color: var(--ink);
+}
+.harvest__close {
+  align-self: flex-end;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-ship:active {
+    transform: none;
+  }
+}

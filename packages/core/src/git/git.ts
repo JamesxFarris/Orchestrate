@@ -38,6 +38,45 @@ export async function isClean(cwd: string): Promise<boolean> {
   return (await git(cwd, ['status', '--porcelain'])).trim() === '';
 }
 
+/** True when `ancestor` is reachable from `descendant`, i.e. that work is already in it. */
+export async function isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+  try {
+    await git(cwd, ['merge-base', '--is-ancestor', ancestor, descendant]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function mergeBase(cwd: string, a: string, b: string): Promise<string> {
+  return (await git(cwd, ['merge-base', a, b])).trim();
+}
+
+/** The directory of the worktree that has `branch` checked out, if any. */
+export async function checkoutOf(repoRoot: string, branch: string): Promise<string | undefined> {
+  const out = await git(repoRoot, ['worktree', 'list', '--porcelain']);
+  for (const block of out.split(/\r?\n\r?\n/)) {
+    const lines = block.split(/\r?\n/);
+    const dir = lines.find((l) => l.startsWith('worktree '))?.slice('worktree '.length);
+    if (dir && lines.includes(`branch refs/heads/${branch}`)) return dir;
+  }
+  return undefined;
+}
+
+/**
+ * `-c` flags that make a commit carry the user's own git identity, for actions the user takes (like
+ * shipping). Read without IDENTITY, which would otherwise answer "Orchestrate". Empty if unset.
+ */
+export async function userIdentity(cwd: string): Promise<string[]> {
+  const read = (key: string) =>
+    execFileP('git', ['config', '--get', key], { cwd, windowsHide: true }).then(
+      (r) => r.stdout.trim(),
+      () => '',
+    );
+  const [name, email] = await Promise.all([read('user.name'), read('user.email')]);
+  return name && email ? ['-c', `user.name=${name}`, '-c', `user.email=${email}`] : [];
+}
+
 /** Junction (Windows) / symlink shared directories like node_modules into a worktree. */
 export function linkDirs(repoRoot: string, worktree: string, dirs: readonly string[]): void {
   for (const d of dirs) {

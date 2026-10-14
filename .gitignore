@@ -3,3 +3,4 @@ dist/
 .orchestrate/
 *.log
 .env
+.claude/worktrees/

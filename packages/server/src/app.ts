@@ -44,7 +44,9 @@ export async function buildApp({ backend, staticDir, logger = false }: AppOption
     };
   });
 
-  app.get('/api/state', async () => ({ agents: backend.bus.agentSnapshots(), runs: backend.list().slice(0, 60) }));
+  app.get('/api/state', async () => ({ agents: backend.bus.agentSnapshots(), runs: backend.list().slice(0, 60), progress: backend.progress() }));
+
+  app.get('/api/progress', async () => backend.progress());
 
   app.get('/api/runs', async () => backend.list());
 
@@ -68,6 +70,16 @@ export async function buildApp({ backend, staticDir, logger = false }: AppOption
 
   app.post<{ Params: { id: string } }>('/api/runs/:id/cancel', async (req, reply) =>
     backend.cancel(req.params.id) ? { ok: true } : reply.code(409).send({ error: 'run is not active' }),
+  );
+
+  // Ship it. A refusal is a 409 carrying the reason and git's output, so the UI can say why.
+  app.post<{ Params: { id: string } }>('/api/runs/:id/ship', async (req, reply) => {
+    const res = await backend.ship(req.params.id);
+    return res.ok ? res : reply.code(409).send({ error: res.message, reason: res.reason, output: res.output });
+  });
+
+  app.post<{ Params: { id: string } }>('/api/runs/:id/mark-shipped', async (req, reply) =>
+    (await backend.markShipped(req.params.id)) ? { ok: true } : reply.code(409).send({ error: 'only a completed project that has not shipped yet can be marked as shipped' }),
   );
 
   app.get('/ws', { websocket: true }, (socket, req) => {

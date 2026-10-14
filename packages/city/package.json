@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
     "@orchestrate/shared": "*",
     "@react-three/drei": "^10.7.0",
     "@react-three/fiber": "^9.3.0",

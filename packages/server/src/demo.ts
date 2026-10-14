@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { EventBus, type Org } from '@orchestrate/core';
-import type { EventInput, OrchestrateEvent, Plan, RunState, TaskContract, TaskState } from '@orchestrate/shared';
+import { computeProgress, EventBus, finishedAt, type Org, type ShipResult } from '@orchestrate/core';
+import type { EventInput, OrchestrateEvent, Plan, ProgressSnapshot, RunState, TaskContract, TaskState } from '@orchestrate/shared';
 import type { Backend } from './backend.ts';
 
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -18,6 +18,17 @@ const DEV_LINES = [
   'Fixing an off-by-one in the edge case',
 ];
 const QA_LINES = ['Reading the contract', 'Writing acceptance tests', 'Covering edge cases', 'Confirming tests fail (red)'];
+const SPEC_LINES = [
+  'Reading the code the change touches',
+  'Drawing the module boundaries',
+  'Writing the contracts between squads',
+  'Listing edge cases and testing notes',
+  'Recording the decision in an ADR',
+];
+
+/** "Add a basic wave spawner!" -> "add-a-basic-wave-spawner" (used for the demo's doc file names). */
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'design';
 
 /**
  * Simulated runs that exercise every event the city renders, using the real org chart.
@@ -30,10 +41,13 @@ export class DemoBackend implements Backend {
   private log = new Map<string, OrchestrateEvent[]>();
   private controllers = new Map<string, AbortController>();
   private approvals = new Map<string, () => void>();
+  private ships = new Map<string, { sha: string; at: number }>();
 
   constructor(
     readonly org: Org,
     private readonly speed = 1,
+    /** A completed demo project ships itself after this long unless Ship it was pressed first. */
+    private readonly autoShipMs = 10_000,
   ) {
     this.bus.on((e) => {
       if (e.runId) this.log.get(e.runId)?.push(e);
@@ -80,6 +94,35 @@ export class DemoBackend implements Backend {
     return this.log.get(runId) ?? [];
   }
 
+  /** No repository in demo mode: shipping is a simulated merge, so the whole loop is visible. */
+  async ship(runId: string): Promise<ShipResult> {
+    const done = this.ships.get(runId);
+    if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
+    if (this.runs.get(runId)?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    return { ok: true, sha: this.recordShip(runId, 'merged'), alreadyShipped: false, tested: false };
+  }
+
+  async markShipped(runId: string): Promise<boolean> {
+    if (this.runs.get(runId)?.status !== 'completed' || this.ships.has(runId)) return false;
+    this.recordShip(runId, 'marked');
+    return true;
+  }
+
+  progress(): ProgressSnapshot {
+    const facts = [...this.runs.values()].map((run) => {
+      const events = this.log.get(run.id) ?? [];
+      return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
+    });
+    return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));
+  }
+
+  private recordShip(runId: string, method: 'merged' | 'marked'): string {
+    const sha = randomBytes(20).toString('hex');
+    this.ships.set(runId, { sha, at: Date.now() });
+    this.emit({ type: 'run.shipped', runId, sha, method });
+    return sha;
+  }
+
   private emit(e: EventInput) {
     this.bus.emit(e);
   }
@@ -116,21 +159,28 @@ export class DemoBackend implements Backend {
   private demoPlan(prompt: string): Plan {
     const squads = this.org.squads.filter((sq) => this.org.implementer(sq.id, 'code') || this.org.implementer(sq.id, 'research'));
     const tasks: TaskContract[] = [];
+    // The Architecture squad (no QA): a design doc + ADR under its docs root that the code tasks depend on.
     const research = squads.find((sq) => !this.org.squadRole(sq.id, 'qa'));
+    const docsRoot = research?.owns[0]!.replace(/\*.*$/, '') ?? 'docs/';
+    const slug = slugify(prompt);
+    const designDoc = `${docsRoot}design/${slug}.md`;
     if (research) {
       tasks.push({
         id: 'spec',
-        title: 'Spec the mechanic from the reference games',
+        title: 'Design doc and ADR',
         squad: research.id,
         kind: 'research',
-        objective: `Write a precise spec for: ${prompt}`,
-        acceptanceCriteria: ['Spec lists exact numbers and edge cases'],
+        objective: `Write the design doc and ADR for: ${prompt}`,
+        acceptanceCriteria: [
+          'Design doc covers goals, non-goals, module boundaries, cross-squad contracts, data flow, edge cases and testing notes',
+          'ADR records the context, the decision, rejected alternatives and consequences',
+        ],
         nonGoals: ['Implementation'],
-        writeScope: [research.owns[0]!.replace('**', 'spec.md')],
+        writeScope: [designDoc, `${docsRoot}adr/0001-${slug}.md`],
         readScope: [],
         testFiles: [],
         dependsOn: [],
-        testPlan: 'Reviewed by lead',
+        testPlan: 'Reviewed by the Architecture Lead; QA turns the testing notes into acceptance tests for the code tasks',
       });
     }
     for (const sq of squads.filter((x) => x !== research).slice(0, 3)) {
@@ -143,7 +193,7 @@ export class DemoBackend implements Backend {
         acceptanceCriteria: ['Behaviour covered by tests'],
         nonGoals: ['Refactors'],
         writeScope: [sq.owns[0]!],
-        readScope: [],
+        readScope: research ? [designDoc] : [],
         testFiles: [`${(sq.testDirs[0] ?? 'tests/**').replace('**', sq.id)}.test.ts`],
         dependsOn: research ? ['spec'] : [],
         testPlan: 'Unit tests',
@@ -199,7 +249,7 @@ export class DemoBackend implements Backend {
         this.emit({ type: 'handoff', runId: run.id, taskId: c.id, from: qa.id, to: impl.id, reason: 'acceptance tests are red' });
       }
       this.taskStatus(run, t, 'in_progress');
-      await this.work(run, s, impl.id, 'working', t, DEV_LINES.slice(0, 3 + Math.floor(Math.random() * 3)));
+      await this.work(run, s, impl.id, 'working', t, (c.kind === 'research' ? SPEC_LINES : DEV_LINES).slice(0, 3 + Math.floor(Math.random() * 3)));
       if (Math.random() < 0.35) {
         this.emit({ type: 'agent.activity', runId: run.id, agentId: impl.id, activity: 'blocked', taskId: c.id, taskTitle: c.title, summary: 'Needs a shared type outside scope' });
         this.emit({ type: 'escalation', runId: run.id, taskId: c.id, from: impl.id, to: lead.id, reason: 'Needs a shared type outside scope' });
@@ -227,5 +277,6 @@ export class DemoBackend implements Backend {
     run.summary = `Demo run complete: ${run.tasks.length} tasks merged into ${run.integrationBranch}.`;
     this.emit({ type: 'run.summary', runId: run.id, summary: run.summary, followUps: [], branch: run.integrationBranch });
     this.status(run, 'completed', `${run.tasks.length}/${run.tasks.length} tasks merged`);
+    if (Number.isFinite(this.autoShipMs)) setTimeout(() => void this.ship(run.id), this.autoShipMs).unref?.();
   }
 }

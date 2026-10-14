@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { RunState } from '@orchestrate/shared';
+import type { ProgressSnapshot, RunState } from '@orchestrate/shared';
 import { z } from 'zod';
 
 /** Thin MCP front door: Claude Code talks to the Master through the local Orchestrate daemon. */
@@ -134,6 +134,51 @@ server.registerTool(
   async ({ runId }) => {
     await api('POST', `/api/runs/${encodeURIComponent(runId)}/cancel`);
     return text(`Cancelled ${runId}.`);
+  },
+);
+
+server.registerTool(
+  'orchestrate_ship',
+  {
+    title: 'Ship a finished project',
+    description:
+      "Merge a completed run's branch into the project's default branch as a merge commit. It merges in a scratch copy first, re-runs the full test suite if the default branch moved since the run started, and refuses (changing nothing) on conflicts, failing tests, or uncommitted edits to the same files. Use markOnly when the work was already merged some other way (e.g. a squash merge) to just record it as shipped.",
+    inputSchema: {
+      runId: z.string(),
+      markOnly: z.boolean().optional().describe('Only record the run as shipped; do not merge. For squash or rebase merges done elsewhere.'),
+    },
+  },
+  async ({ runId, markOnly }) => {
+    const id = encodeURIComponent(runId);
+    if (markOnly) {
+      await api('POST', `/api/runs/${id}/mark-shipped`);
+      return text(`Marked ${runId} as shipped. Its growth is banked.`);
+    }
+    const res = await api<{ sha: string; alreadyShipped: boolean; tested: boolean }>('POST', `/api/runs/${id}/ship`);
+    if (res.alreadyShipped) return text(`${runId} was already in the default branch; recorded as shipped.`);
+    return text(`Shipped ${runId} as merge commit ${res.sha.slice(0, 10)}${res.tested ? ' (the full suite passed on the combined code first)' : ''}. Its growth is banked.`);
+  },
+);
+
+server.registerTool(
+  'orchestrate_progress',
+  {
+    title: 'District progress',
+    description: "Each squad district's size (Hamlet → City), banked and pending growth, and its run of clean ships.",
+    inputSchema: {},
+  },
+  async () => {
+    const [progress, team] = await Promise.all([
+      api<ProgressSnapshot>('GET', '/api/progress'),
+      api<{ squads: { id: string; name: string }[] }>('GET', '/api/team'),
+    ]);
+    const name = (id: string) => team.squads.find((s) => s.id === id)?.name ?? id;
+    const lines = progress.districts.map((d) => {
+      const s = d.settlement;
+      const pending = d.pending ? `, +${d.pending} pending (→ ${d.settlementAfterPending.name})` : '';
+      return `${name(d.squad)}: ${s.name} (${s.into}/${s.needed} to next)${pending} · ${d.streak} clean ships in a row · ${d.ships} shipped`;
+    });
+    return text(lines.join('\n') || 'No districts.');
   },
 );
 

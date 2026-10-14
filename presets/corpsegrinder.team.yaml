@@ -1,5 +1,5 @@
 # CorpseGrinder: wave killer (Vampire Survivors x Enter the Gungeon), TypeScript + Vite + Vitest.
-# Ownership mirrors the repo layout: src/sim, src/data, src/core, src/render, src/art, tests/, docs/.
+# Ownership mirrors the repo layout: src/sim, src/data, src/core, src/render, src/art, tests/, docs/ (design docs + ADRs).
 version: 1
 
 project:
@@ -63,10 +63,14 @@ squads:
     mission: Canvas renderer, tilemap, FX, HUD, level-up choice UI, icons, and the art pack / sprite resolver.
     owns: ["src/render/**", "src/art/**", "index.html"]
     testDirs: ["tests/**"]
+  # The Architecture squad keeps the id "research" (and its role ids) so saved runs and tests still resolve.
   - id: research
-    name: Research
+    name: Architecture
     color: "#7fb7be"
-    mission: Study the reference games (ripped assets, decompiled sources) and write precise mechanic specs other squads build from.
+    mission: >-
+      Design before code. When work spans squads, adds a module or needs a design decision, write a design
+      doc (docs/design/) and an ADR (docs/adr/) fixing the module boundaries and the contracts other squads
+      build against. The reference games are optional input, not the purpose.
     owns: ["docs/**"]
 
 roles:
@@ -90,9 +94,9 @@ roles:
   - { id: render-dev, title: Render Developer, kind: dev, tier: senior, squad: render, reportsTo: render-lead }
   - { id: render-qa, title: Render QA Engineer, kind: qa, tier: ic, squad: render, reportsTo: head-of-qa }
 
-  # --- Research -------------------------------------------------------------
-  - { id: research-lead, title: Research Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
-  - { id: research-analyst, title: Reverse-Engineering Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
+  # --- Architecture -----------------------------------------------------------
+  - { id: research-lead, title: Architecture Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-analyst, title: Systems Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
 
   # --- Optional chapters (flip enabled: true to add them to the city) --------
   - { id: head-of-product, title: Head of Product, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }

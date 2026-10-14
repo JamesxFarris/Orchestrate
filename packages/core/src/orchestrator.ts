@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { CircleReview, Plan, RunSummary, type RunState, type RunStatus, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -16,8 +16,10 @@ import {
   masterSummarySystem,
 } from './prompts.ts';
 import { outputSchema, parseStructured } from './runner/structured.ts';
+import { computeProgress, finishedAt } from './progress/progress.ts';
 import { READ_TOOLS, type AgentRunner } from './runner/types.ts';
-import type { Store } from './store/store.ts';
+import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
+import type { ShipRecord, Store } from './store/store.ts';
 
 export interface OrchestratorOptions {
   org: Org;
@@ -50,6 +52,10 @@ export class Orchestrator {
   private readonly controllers = new Map<string, AbortController>();
   private readonly approvals = new Map<string, { resolve: () => void; reject: (e: Error) => void }>();
   private readonly done = new Map<string, Promise<RunState>>();
+  private readonly ships = new Map<string, ShipRecord>();
+  /** Ships and ship detection run one at a time, so a run is never recorded twice. */
+  private shipLock: Promise<unknown> = Promise.resolve();
+  private lastTargetHead?: string;
 
   constructor(opts: OrchestratorOptions) {
     this.org = opts.org;
@@ -61,7 +67,98 @@ export class Orchestrator {
     if (this.store) {
       const store = this.store;
       this.bus.on((e) => store.appendEvent(e));
+      for (const s of store.ships()) this.ships.set(s.runId, s);
     }
+  }
+
+  // ---------------------------------------------------------------- shipping & progression
+
+  /** Ship it: merge a completed run into the default branch. Safety rules live in ship/ship.ts. */
+  ship(runId: string): Promise<ShipResult> {
+    return this.serialShip(async () => {
+      const done = this.ships.get(runId);
+      if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
+      const run = this.get(runId);
+      if (!run || run.status !== 'completed' || !run.integrationBranch) return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+      const res = await shipRun({
+        repoRoot: this.repoRoot,
+        runId,
+        branch: run.integrationBranch,
+        target: this.org.project.defaultBranch,
+        workDir: this.workDir,
+        links: this.org.project.linkDirs,
+        fullGate: this.org.gates.full,
+        timeoutMs: this.org.gates.timeoutMs,
+        message: `Ship ${run.integrationBranch}: ${run.prompt.split('\n')[0]!.slice(0, 72)}`,
+      });
+      if (res.ok) this.recordShip(runId, res.sha, res.alreadyShipped ? 'detected' : 'merged');
+      return res;
+    });
+  }
+
+  /** For merges detection cannot see (squash, rebase): the human says it shipped. */
+  markShipped(runId: string): Promise<boolean> {
+    return this.serialShip(async () => {
+      const run = this.get(runId);
+      if (!run || run.status !== 'completed' || this.ships.has(runId)) return false;
+      this.recordShip(runId, await g.revParse(this.repoRoot, this.org.project.defaultBranch), 'marked');
+      return true;
+    });
+  }
+
+  /** Fallback for runs merged outside Orchestrate. Costs one rev-parse unless the target moved. */
+  checkShipped(): Promise<string[]> {
+    return this.serialShip(async () => {
+      const target = this.org.project.defaultBranch;
+      const now = await g.revParse(this.repoRoot, target).catch(() => undefined);
+      if (!now || now === this.lastTargetHead) return [];
+      this.lastTargetHead = now;
+      const candidates = this.allRuns()
+        .filter((r) => r.status === 'completed' && r.integrationHead && !this.ships.has(r.id))
+        .map((r) => ({ runId: r.id, head: r.integrationHead! }));
+      const found = await detectShipped(this.repoRoot, target, candidates);
+      for (const id of found) this.recordShip(id, now, 'detected');
+      return found;
+    });
+  }
+
+  /** Check now, then every `intervalMs`. Returns a stop function. */
+  watchShips(intervalMs = 60_000): () => void {
+    const tick = () => void this.checkShipped().catch((err) => console.error('[ship detection]', err));
+    tick();
+    const timer = setInterval(tick, intervalMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
+  /** Districts' growth, settlements and streaks, derived from stored runs, events and ships. */
+  progress(): ProgressSnapshot {
+    const facts = this.allRuns().map((run) => {
+      const events = this.store?.events(run.id) ?? [];
+      return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
+    });
+    return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));
+  }
+
+  private recordShip(runId: string, sha: string, method: ShipMethod): void {
+    if (this.ships.has(runId)) return;
+    const record: ShipRecord = { runId, sha, at: Date.now(), method };
+    this.ships.set(runId, record);
+    this.store?.recordShip(record);
+    this.bus.emit({ type: 'run.shipped', runId, sha, method });
+  }
+
+  private serialShip<T>(job: () => Promise<T>): Promise<T> {
+    const next = this.shipLock.then(job);
+    this.shipLock = next.catch(() => undefined);
+    return next;
+  }
+
+  private allRuns(): RunState[] {
+    const live = [...this.runs.values()];
+    const stored = this.store?.listRuns(Number.MAX_SAFE_INTEGER) ?? [];
+    const ids = new Set(live.map((r) => r.id));
+    return [...live, ...stored.filter((r) => !ids.has(r.id))];
   }
 
   submit(prompt: string, opts: SubmitOptions = {}): RunState {
@@ -275,6 +372,8 @@ export class Orchestrator {
       }
     } finally {
       await Promise.allSettled(running.values());
+      run.integrationHead = await integration.head().catch(() => undefined);
+      this.save(run);
       await integration.dispose().catch(() => undefined);
     }
   }
@@ -323,3 +422,4 @@ export class Orchestrator {
     }
   }
 }
+

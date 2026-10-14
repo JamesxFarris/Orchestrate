@@ -2,9 +2,19 @@ import type { CodeReview, Plan, RoleConfig, TaskContract } from '@orchestrate/sh
 import type { Org } from './org/org.ts';
 import { orchTool } from './scope/scopeGuard.ts';
 
+function referenceDirs(org: Org): string[] {
+  return [...org.project.referenceDirs, ...org.externalReferenceDirs()];
+}
+
 function referenceLine(org: Org): string {
-  const dirs = [...org.project.referenceDirs, ...org.externalReferenceDirs()];
+  const dirs = referenceDirs(org);
   return dirs.length ? `Reference material you may read (never write): ${dirs.join(', ')}` : '';
+}
+
+/** Squads that write design docs: those with an analyst (the Architecture squad, id "research" in the presets). */
+function specSquads(org: Org): string {
+  const names = org.squads.filter((s) => org.squadRole(s.id, 'analyst')).map((s) => `${s.id} (${s.name})`);
+  return names.length ? names.join(' or ') : 'the docs-owning';
 }
 
 const bullet = (xs: readonly string[]) => (xs.length ? xs.map((x) => `- ${x}`).join('\n') : '- (none)');
@@ -36,7 +46,10 @@ Test plan: ${t.testPlan}`;
 
 function squadTable(org: Org): string {
   return org.squads
-    .map((s) => `- ${s.id} (${s.name}): ${s.mission}\n    owns: ${s.owns.join(', ')}\n    test dirs: ${s.testDirs.join(', ') || '(none — research only)'}`)
+    .map((s) => {
+      const tests = s.testDirs.join(', ') || (org.squadRole(s.id, 'analyst') ? '(none — design docs and ADRs only)' : '(any directory)');
+      return `- ${s.id} (${s.name}): ${s.mission}\n    owns: ${s.owns.join(', ')}\n    test dirs: ${tests}`;
+    })
     .join('\n');
 }
 
@@ -45,6 +58,7 @@ function squadTable(org: Org): string {
 export function masterPlanningSystem(org: Org): string {
   const master = org.master();
   const p = org.project;
+  const refs = referenceDirs(org);
   return `${identity(org, master)}
 
 You lead engineering. You never write code. You turn a request into a plan of small, independently testable tasks, each owned by exactly one squad, then other agents execute it under strict scope enforcement.
@@ -56,8 +70,11 @@ RULES FOR A GOOD PLAN
 - One task = one squad, one coherent change, at most ${org.policy.maxChangedLines} changed lines. Split anything bigger.
 - writeScope = the narrowest globs covering the change and inside the squad's "owns". Prefer exact files or one directory. Implementers cannot touch anything else.
 - kind "code": list exact testFiles (paths under the squad's test dirs, matching ${p.testGlobs.join(' or ')}). QA writes them first and they must fail before implementation. Every acceptance criterion must be checkable by those tests.
-- kind "research": an analyst writes a spec under the research squad's paths. Use this when mechanics should be derived from reference material (${[...p.referenceDirs, ...org.externalReferenceDirs()].join(', ') || 'none configured'}) before coding; make the code tasks depend on it.
-- When two squads must agree on a type or API, add a first task (owned by the squad owning that file) that defines it, and make the others depend on it.
+- kind "research" = a design spec written BEFORE any code by the ${specSquads(org)} squad: a design doc plus an ADR, no QA tests. Plan one first when the work spans 2+ squads, introduces a new module or subsystem, or needs a design decision before anyone can code, and make every code task that builds on it depend on it. Small single-squad changes skip it and go straight to code tasks.
+  - writeScope lists exactly two files: the design doc docs/design/<slug>.md and the ADR docs/adr/NNNN-<slug>.md (NNNN = the next free 4-digit number in docs/adr/, 0001 if there is none). If the squad owns a different docs root, use the same two names under it, and add the design doc to the readScope of the code tasks that depend on it.
+  - readScope lists the existing source directories the design touches. The analyst cannot read other code.
+  - acceptanceCriteria name the decisions the doc must settle: which squad owns which module, and the exact types, APIs or events that cross squad boundaries. The dependent code tasks then implement those contracts, and their QA tests follow the doc's testing notes.${refs.length ? `\n  - Reference material (${refs.join(', ')}) is optional input the analyst may consult. It is not a reason to plan a spec.` : ''}
+- When two squads must agree on a type or API, add a first code task (owned by the squad owning that file) that defines it, following the design doc if there is one, and make the others depend on it.
 - nonGoals: name the tempting adjacent work that is out of scope.
 - Plan only what the request asks for. No speculative refactors, no "nice to haves".
 - Use Read/Glob/Grep to ground file paths in what actually exists in the repository.
@@ -137,6 +154,15 @@ export function implementerSystem(
   maxChangedLines: number,
 ): string {
   const research = t.kind === 'research';
+  const rule2 = research
+    ? `2. Write exactly the two documents named in the write scope: the design doc and the ADR. Other squads will build and test against them without asking you questions, so be concrete: real file paths, type signatures, function and event names, numbers and error cases.
+   Design doc sections: Goals; Non-goals; Module boundaries (which squad owns which files, and what each module must not depend on); Contracts (the exact types, APIs and events that cross squad boundaries); Data flow; Edge cases and failure modes; Testing notes (behaviours QA should turn into acceptance tests, with example inputs and expected results).
+   ADR sections: Context; Decision; Alternatives considered (each with why it was rejected); Consequences (what gets easier, what gets harder, what follow-up work it forces).
+   Fit the codebase as it is: follow its existing conventions and choose the smallest design that meets the goals. Do not write code.`
+    : '2. The QA test files are protected. Make them pass by implementing the code; never edit, skip, or weaken them, and never special-case test inputs.';
+  const workflow = research
+    ? `Read the existing code in your read scope (${t.readScope.join(', ') || 'none listed; docs/ and config files are always readable'})${referenceLine(org) ? ' and, where useful, the reference material' : ''} -> ${orchTool('report_progress')} -> write the design doc, then the ADR -> reread both against the acceptance criteria and check that every path and type you name either exists or is marked as new`
+    : `Read the tests and the code they touch -> ${orchTool('report_progress')} -> implement -> verify with: ${commands.join(' ; ') || '(no commands)'}`;
   return `${identity(org, role)}
 
 You implement exactly ONE task contract and nothing else.
@@ -146,13 +172,13 @@ ${referenceLine(org)}
 
 HARD RULES (enforced by the orchestrator, and every diff is audited)
 1. Only create or modify files matching the write scope above. Everything else is read-only. Out-of-scope changes are rejected and the attempt is wasted.
-${research ? '2. Write a precise spec: concrete numbers, formulas, state machines and edge cases another engineer can implement and test without reading the reference.' : `2. The QA test files are protected. Make them pass by implementing the code; never edit, skip, or weaken them, and never special-case test inputs.`}
+${rule2}
 3. Do only what the acceptance criteria require. No drive-by refactors, renames, reformatting or "while I'm here" fixes. Respect the non-goals.
-4. If you cannot finish within scope — you need another file, the contract is wrong, a dependency is missing — call ${orchTool('request_scope_change')} or ${orchTool('raise_blocker')} and STOP. Do not work around it, do not redesign, do not touch other squads' code.
+4. If you cannot finish within scope — you need another file, the contract is wrong, a dependency is missing — call ${orchTool('request_scope_change')} or ${orchTool('raise_blocker')} and STOP. Do not work around it, do not ${research ? 'widen the design beyond the contract' : 'redesign'}, do not touch other squads' code.
 5. Keep the change under ${maxChangedLines} changed lines.
 
 WORKFLOW
-Read the ${research ? 'reference material' : 'tests and the code they touch'} -> ${orchTool('report_progress')} -> implement -> ${research ? 'reread the spec against the criteria' : `verify with: ${commands.join(' ; ') || '(no commands)'}`} -> fix -> ${orchTool('submit_work')} with a two-line summary.`;
+${workflow} -> fix -> ${orchTool('submit_work')} with a two-line summary.`;
 }
 
 export function implementerPrompt(feedback: string[]): string {

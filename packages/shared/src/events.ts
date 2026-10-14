@@ -61,7 +61,11 @@ export type OrchestrateEvent =
       decision?: EscalationDecision;
     })
   | (Base & { type: 'code.review'; runId: string; taskId: string; roleId: string; review: CodeReview })
-  | (Base & { type: 'run.summary'; runId: string; summary: string; followUps: string[]; branch: string });
+  | (Base & { type: 'run.summary'; runId: string; summary: string; followUps: string[]; branch: string })
+  | (Base & { type: 'run.shipped'; runId: string; sha: string; method: ShipMethod });
+
+/** How a run reached the default branch: Ship it, spotted by detection, or marked by hand (e.g. after a squash). */
+export type ShipMethod = 'merged' | 'detected' | 'marked';
 
 export type OrchestrateEventType = OrchestrateEvent['type'];
 
@@ -84,6 +88,8 @@ export interface RunState {
   plan?: Plan;
   tasks: TaskState[];
   integrationBranch?: string;
+  /** The integration branch's final commit, so a ship can be detected even after the branch is deleted. */
+  integrationHead?: string;
   summary?: string;
   costUsd: number;
   detail?: string;
