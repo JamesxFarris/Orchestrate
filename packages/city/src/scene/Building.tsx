@@ -252,7 +252,10 @@ export function Building({ p }: { p: Placement }) {
                 <span className="card__icon">
                   <RoleIcon kind={p.role.kind} size={15} />
                 </span>
-                <span className="card__role">{p.role.title}</span>
+                <span className="card__role">
+                  {p.role.title}
+                  {p.squad && <span className="card__squad">{p.squad.name}</span>}
+                </span>
               </div>
               <div className="card__verb">{verb}</div>
               {agent?.taskTitle && <div className="card__task">{agent.taskTitle}</div>}
@@ -268,10 +271,13 @@ export function Building({ p }: { p: Placement }) {
           ) : mode === 'tag' ? (
             <div className="tag">
               <RoleIcon kind={p.role.kind} size={12} />
-              <span>{p.role.title}</span>
+              <span className="tag__text">
+                {p.role.title}
+                {p.squad && <span className="tag__squad">{p.squad.name}</span>}
+              </span>
             </div>
           ) : (
-            <div className={`dot ${active ? 'dot--active' : ''}`} title={p.role.title}>
+            <div className={`dot ${active ? 'dot--active' : ''}`} title={p.squad ? `${p.role.title} · ${p.squad.name}` : p.role.title}>
               <RoleIcon kind={p.role.kind} size={13} />
             </div>
           )}

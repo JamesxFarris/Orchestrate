@@ -1,6 +1,6 @@
 # Orchestrate
 
-You send one prompt to a **Master** (Head of Engineering). It plans the work into small, scoped task contracts. The **Tech Circle** reviews the plan, you approve it, and squads of Claude agents build it test-first. The orchestrator **enforces** each agent's scope and doesn't rely on the agents to stay inside it.
+You send one prompt to a **Master** (the VP of Engineering). It plans the work into small, scoped task contracts. The **Tech Circle** reviews the plan, you approve it, and squads of Claude agents build it test-first. The orchestrator **enforces** each agent's scope and doesn't rely on the agents to stay inside it.
 
 You watch the team in **Agent City**, a 3D night skyline. Each agent is a tower, and a tower's windows light up with a live summary card while that agent works.
 
@@ -51,15 +51,17 @@ The MCP server talks to the daemon at `ORCH_URL` (default `http://127.0.0.1:4317
 
 ## The org (squad/chapter model)
 
-| Chart role | Here |
+Buildings carry standard industry job titles. Titles repeat across squads (every squad has a Tech Lead), so the city always shows the squad alongside the title.
+
+| Title | Here |
 |---|---|
 | CTO | **You.** Approve plans and merge the final branch. |
-| Head of Engineering | **Master.** Plans, never writes code, writes the run report. |
-| Engineering Architect, Head of QA, Squad Leads | The **Tech Circle**, which reviews every plan before work starts. |
-| Squad Manager + Lead Dev | **Lead.** Reviews diffs and rules on escalations. |
-| Developers | **Dev.** Implements exactly one contract. |
-| Architects (Architecture squad) | **Systems Analyst.** Designs before anyone codes. When work spans 2+ squads, adds a module or subsystem, or needs a design decision, the Master plans a spec task first. The analyst writes a design doc (`docs/design/<slug>.md`: goals, non-goals, module boundaries, cross-squad contracts, data flow, edge cases, testing notes) and an ADR (`docs/adr/NNNN-<slug>.md`: context, decision, rejected alternatives, consequences). The code tasks depend on it. Small single-squad changes skip it. |
-| QA Engineers | **QA.** Writes failing acceptance tests *before* any implementation exists. |
+| VP of Engineering | **Master.** Plans, never writes code, writes the run report. |
+| Principal Architect, QA Manager, Tech Leads | The **Tech Circle**, which reviews every plan before work starts. |
+| Tech Lead (one per squad) | **Lead.** Reviews diffs and rules on escalations. |
+| Software Engineer | **Dev.** Implements exactly one contract. |
+| Systems Analyst (Architecture squad) | **Analyst.** Designs before anyone codes. When work spans 2+ squads, adds a module or subsystem, or needs a design decision, the Master plans a spec task first. The analyst writes a design doc (`docs/design/<slug>.md`: goals, non-goals, module boundaries, cross-squad contracts, data flow, edge cases, testing notes) and an ADR (`docs/adr/NNNN-<slug>.md`: context, decision, rejected alternatives, consequences). The code tasks depend on it. Small single-squad changes skip it. |
+| QA Engineer | **QA.** Writes failing acceptance tests *before* any implementation exists. |
 | Delivery Manager / Scrum | **Scheduler.** Plain code, not an LLM. |
 
 Squads, roles, models, effort, budgets, test commands and policy all live in a team file. Two presets ship:
@@ -67,7 +69,7 @@ Squads, roles, models, effort, budgets, test commands and policy all live in a t
 - [presets/default.team.yaml](presets/default.team.yaml): a generic web-app team with Frontend, Backend, Platform and Architecture squads.
 - [presets/corpsegrinder.team.yaml](presets/corpsegrinder.team.yaml): a game team with Gameplay, Core Engine, Render & UI and Architecture squads.
 
-A test loads every `presets/*.team.yaml` through the real org loader, so a broken preset fails `npm test`. Set `enabled: true` on Product or Design to add them to the city.
+A test loads every `presets/*.team.yaml` through the real org loader, so a broken preset fails `npm test`. Set `enabled: true` on the Product Manager or Product Designer to add them to the city.
 
 ## How drift is prevented
 

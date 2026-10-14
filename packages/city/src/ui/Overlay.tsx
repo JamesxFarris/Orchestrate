@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
+import { roleName, type OrchestrateEvent, type RunState } from '@orchestrate/shared';
 import { api } from '../api.ts';
 import { CollapsiblePanel } from './CollapsiblePanel.tsx';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity, useCurrentRun } from '../store.ts';
@@ -100,7 +100,10 @@ function describe(e: OrchestrateEvent, title: (id: string) => string): string | 
 export function Ticker() {
   const events = useCity((s) => s.events);
   const team = useCity((s) => s.team);
-  const title = (id: string) => team?.roles.find((r) => r.id === id)?.title ?? id;
+  const title = (id: string) => {
+    const role = team?.roles.find((r) => r.id === id);
+    return role ? roleName(role, team!.squads) : id;
+  };
   const lines = useMemo(() => {
     const out: { key: number; text: string }[] = [];
     for (let i = events.length - 1; i >= 0 && out.length < 6; i--) {
@@ -159,7 +162,7 @@ export function PromptBar() {
             void send();
           }
         }}
-        placeholder={running ? 'A run is in progress. You can queue another request…' : 'Tell the Head of Engineering what to build…'}
+        placeholder={running ? 'A run is in progress. You can queue another request…' : 'Tell the VP of Engineering what to build…'}
         rows={1}
       />
       <label className="prompt__toggle" title="Skip the plan approval gate">
@@ -204,7 +207,7 @@ export function AgentPanel() {
           <div className="agent__title">{role?.title}</div>
           <div className="muted">
             {squad ? `${squad.name} squad` : 'Headquarters'} · {role?.kind}
-            {boss ? ` · reports to ${boss.title}` : ''}
+            {boss ? ` · reports to ${roleName(boss, team.squads)}` : ''}
           </div>
         </div>
       </div>
@@ -276,7 +279,10 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const team = useCity((s) => s.team);
   if (!open || !run?.plan) return null;
   const reviews = events.filter((e) => e.type === 'circle.review' && e.runId === run.id);
-  const title = (id: string) => team?.roles.find((r) => r.id === id)?.title ?? id;
+  const title = (id: string) => {
+    const role = team?.roles.find((r) => r.id === id);
+    return role ? roleName(role, team!.squads) : id;
+  };
 
   return (
     <div className="scrim" onClick={onClose}>
@@ -355,12 +361,12 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
 const ACTIVITY_COLOR_MERGED = '#7bc950';
 const ROLE_KEY: [string, string][] = [
-  ['master', 'Head of Eng'],
-  ['architect', 'Architect'],
-  ['qa_head', 'Head of QA'],
-  ['lead', 'Lead'],
-  ['dev', 'Dev'],
-  ['qa', 'QA'],
+  ['master', 'VP of Engineering'],
+  ['architect', 'Principal Architect'],
+  ['qa_head', 'QA Manager'],
+  ['lead', 'Tech Lead'],
+  ['dev', 'Software Engineer'],
+  ['qa', 'QA Engineer'],
   ['analyst', 'Systems Analyst'],
 ];
 

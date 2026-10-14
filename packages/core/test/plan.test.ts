@@ -1,7 +1,8 @@
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Plan, TaskContract, TaskStatus } from '@orchestrate/shared';
+import { roleName, type Plan, type TaskContract, type TaskStatus } from '@orchestrate/shared';
+import { circleReviewSystem } from '../src/prompts.ts';
 import { Org, TeamConfigError } from '../src/org/org.ts';
 import { schedule, topoOrder } from '../src/plan/dag.ts';
 import { validatePlan } from '../src/plan/validatePlan.ts';
@@ -172,5 +173,20 @@ describe('dag', () => {
       st(task({ id: `t${i}`, squad, writeScope: [`src/${squad}/a${i}/**`], testFiles: [`src/${squad}/a${i}.test.ts`] })),
     );
     expect(schedule(tasks, 2).ready).toHaveLength(2);
+  });
+});
+
+describe('role titles', () => {
+  const role = (id: string) => org.roles.find((r) => r.id === id)!;
+
+  it('uses industry titles, with the squad carried alongside since titles repeat', () => {
+    expect(roleName(role('gameplay-lead'), org.squads)).toBe('Tech Lead · Gameplay');
+    expect(roleName(role('render-lead'), org.squads)).toBe('Tech Lead · Render & UI');
+    expect(roleName(role('head-of-eng'), org.squads)).toBe('VP of Engineering');
+  });
+
+  it('tells each agent which squad it belongs to', () => {
+    expect(circleReviewSystem(org, role('gameplay-lead'))).toContain('You are Tech Lead in the Gameplay squad (gameplay-lead)');
+    expect(circleReviewSystem(org, role('architect'))).toContain('You are Principal Architect (architect)');
   });
 });
