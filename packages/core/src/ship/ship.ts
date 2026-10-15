@@ -28,7 +28,7 @@ export interface ShipRequest {
   signal?: AbortSignal;
 }
 
-export type ShipFailure = 'not-ready' | 'missing-branch' | 'conflict' | 'tests-failed' | 'target-moved' | 'local-changes';
+export type ShipFailure = 'not-ready' | 'incomplete' | 'missing-branch' | 'conflict' | 'tests-failed' | 'target-moved' | 'local-changes';
 
 export type ShipResult =
   | { ok: true; sha: string; alreadyShipped: boolean; tested: boolean }
@@ -56,8 +56,11 @@ export async function shipRun(req: ShipRequest): Promise<ShipResult> {
   const moved = (await g.mergeBase(repoRoot, tip, before)) !== before;
 
   const scratch: g.Worktree = { dir: path.join(req.workDir, req.runId, '_ship'), branch: `orch/ship-${req.runId}` };
-  await g.addWorktree(repoRoot, scratch.dir, scratch.branch, before, req.links);
+  // A ship that crashed part-way leaves its scratch worktree and branch behind; clear them, or
+  // every retry fails with "already exists".
+  await cleanUp(repoRoot, scratch, req.links);
   try {
+    await g.addWorktree(repoRoot, scratch.dir, scratch.branch, before, req.links);
     try {
       await g.git(scratch.dir, [...(await g.userIdentity(repoRoot)), 'merge', '--no-ff', '-m', req.message, tip]);
     } catch (err) {
@@ -91,9 +94,15 @@ export async function shipRun(req: ShipRequest): Promise<ShipResult> {
     await deleteRunBranches(repoRoot, req.runId, branch);
     return { ok: true, sha: merged, alreadyShipped: false, tested: moved && !!req.fullGate };
   } finally {
-    await g.removeWorktree(repoRoot, scratch, req.links);
-    await g.git(repoRoot, ['branch', '-D', scratch.branch]).catch(() => undefined);
+    // Never let cleanup turn the result around: by now the target may already have moved, and on
+    // Windows a file still held open (a test process) makes removing the folder throw.
+    await cleanUp(repoRoot, scratch, req.links);
   }
+}
+
+async function cleanUp(repoRoot: string, scratch: g.Worktree, links: readonly string[]): Promise<void> {
+  await g.removeWorktree(repoRoot, scratch, links).catch(() => undefined);
+  await g.git(repoRoot, ['branch', '-D', scratch.branch]).catch(() => undefined);
 }
 
 /** Every commit is in the target's history now, so the run's branches are just clutter. */

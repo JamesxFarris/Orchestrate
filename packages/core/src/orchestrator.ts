@@ -77,13 +77,26 @@ export class Orchestrator {
 
   // ---------------------------------------------------------------- shipping & progression
 
-  /** Ship it: merge a completed run into the default branch. Safety rules live in ship/ship.ts. */
-  ship(runId: string): Promise<ShipResult> {
+  /**
+   * Ship it: merge a completed run into the default branch. Safety rules live in ship/ship.ts.
+   * A run where some tasks did not finish is still "completed", so shipping it needs `partial`:
+   * whoever ships has to have seen that only part of the feature is there.
+   */
+  ship(runId: string, opts: { partial?: boolean } = {}): Promise<ShipResult> {
     return this.serialShip(async () => {
       const done = this.ships.get(runId);
       if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
       const run = this.get(runId);
       if (!run || run.status !== 'completed' || !run.integrationBranch) return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+      const unfinished = run.tasks.filter((t) => t.status !== 'merged');
+      if (unfinished.length && !opts.partial) {
+        const finished = run.tasks.length - unfinished.length;
+        return {
+          ok: false,
+          reason: 'incomplete',
+          message: `Only ${finished} of ${run.tasks.length} tasks finished (not: ${unfinished.map((t) => t.contract.title).join('; ')}). Confirm a partial ship to ship just the finished work.`,
+        };
+      }
       const res = await shipRun({
         repoRoot: this.repoRoot,
         runId,
@@ -91,7 +104,7 @@ export class Orchestrator {
         target: this.org.project.defaultBranch,
         workDir: this.workDir,
         links: this.org.project.linkDirs,
-        fullGate: this.org.gates.full,
+        fullGate: this.org.gates.full ?? this.org.gates.test, // GateConfig: full defaults to test
         timeoutMs: this.org.gates.timeoutMs,
         message: `Ship ${run.integrationBranch}: ${run.prompt.split('\n')[0]!.slice(0, 72)}`,
       });

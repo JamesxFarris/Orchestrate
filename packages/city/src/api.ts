@@ -15,8 +15,8 @@ export const api = {
   progress: () => json<ProgressSnapshot>('/api/progress'),
   markShipped: (id: string) => json(`/api/runs/${id}/mark-shipped`, { method: 'POST' }),
   /** Ship it. Refusals come back as values (with the reason and git's output) rather than throwing. */
-  ship: async (id: string): Promise<ShipOutcome> => {
-    const res = await fetch(`/api/runs/${id}/ship`, { method: 'POST' });
+  ship: async (id: string, partial = false): Promise<ShipOutcome> => {
+    const res = await fetch(`/api/runs/${id}/ship`, partial ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ partial }) } : { method: 'POST' });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (res.ok) return { ok: true, tested: !!body.tested };
     return { ok: false, message: String(body.error ?? `HTTP ${res.status}`), output: typeof body.output === 'string' ? body.output : undefined };

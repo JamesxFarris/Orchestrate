@@ -97,6 +97,15 @@ describe('daemon API (demo backend)', () => {
     expect((await app.inject({ url: '/api/health', headers: { host: '127.0.0.1:4317' } })).statusCode).toBe(200);
   });
 
+  it('validates the ship body', async () => {
+    const { app, backend } = await setup();
+    const id = backend.submit('Add a basic wave spawner', {}).id;
+    const bad = await app.inject({ method: 'POST', url: `/api/runs/${id}/ship`, payload: { partial: 'yes' } });
+    expect(bad.statusCode).toBe(400);
+    const notReady = await app.inject({ method: 'POST', url: `/api/runs/${id}/ship`, payload: { partial: true } });
+    expect(notReady.json()).toMatchObject({ reason: 'not-ready' });
+  });
+
   it('still lets clients that are not browsers in (the MCP server, curl)', async () => {
     const { app } = await setup();
     const res = await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a basic wave spawner' } });

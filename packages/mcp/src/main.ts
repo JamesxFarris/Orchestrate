@@ -146,15 +146,19 @@ server.registerTool(
     inputSchema: {
       runId: z.string(),
       markOnly: z.boolean().optional().describe('Only record the run as shipped; do not merge. For squash or rebase merges done elsewhere.'),
+      partial: z
+        .boolean()
+        .optional()
+        .describe('Ship even though some tasks did not finish (only the finished work ships). Ask the user first: it lands part of a feature.'),
     },
   },
-  async ({ runId, markOnly }) => {
+  async ({ runId, markOnly, partial }) => {
     const id = encodeURIComponent(runId);
     if (markOnly) {
       await api('POST', `/api/runs/${id}/mark-shipped`);
       return text(`Marked ${runId} as shipped. Its growth is banked.`);
     }
-    const res = await api<{ sha: string; alreadyShipped: boolean; tested: boolean }>('POST', `/api/runs/${id}/ship`);
+    const res = await api<{ sha: string; alreadyShipped: boolean; tested: boolean }>('POST', `/api/runs/${id}/ship`, partial ? { partial } : undefined);
     if (res.alreadyShipped) return text(`${runId} was already in the default branch; recorded as shipped.`);
     return text(`Shipped ${runId} as merge commit ${res.sha.slice(0, 10)}${res.tested ? ' (the full suite passed on the combined code first)' : ''}. Its growth is banked.`);
   },

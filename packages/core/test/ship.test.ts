@@ -145,6 +145,17 @@ describe('shipRun', () => {
     expect(branches(fx.repo)).toEqual(['main']);
   });
 
+  it('recovers from a ship that crashed part-way and left its scratch worktree behind', async () => {
+    const fx = setup();
+    runBranch(fx.repo, 'r1', { 'src/feature.js': 'export const feature = true;\n' });
+    sh(fx.repo, 'worktree', 'add', '-q', '-b', 'orch/ship-r1', path.join(fx.work, 'r1', '_ship'), 'main');
+
+    const res = await shipRun(request(fx, 'r1'));
+    expect(res).toMatchObject({ ok: true });
+    expect(worktrees(fx.repo)).toBe(1);
+    expect(branches(fx.repo)).toEqual(['main']);
+  });
+
   it('explains a missing branch', async () => {
     const fx = setup();
     expect(await shipRun(request(fx, 'nope'))).toMatchObject({ ok: false, reason: 'missing-branch' });

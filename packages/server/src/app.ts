@@ -22,6 +22,9 @@ const SubmitBody = z.object({
   baseRef: z.string().max(200).optional(),
 });
 
+/** `partial`: ship a run even though some of its tasks did not finish (the caller has said so). */
+const ShipBody = z.object({ partial: z.boolean().optional() });
+
 export interface AppOptions {
   backend: Backend;
   /** Built city assets to serve at "/". */
@@ -98,7 +101,9 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
 
   // Ship it. A refusal is a 409 carrying the reason and git's output, so the UI can say why.
   app.post<{ Params: { id: string } }>('/api/runs/:id/ship', async (req, reply) => {
-    const res = await backend.ship(req.params.id);
+    const body = ShipBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
+    const res = await backend.ship(req.params.id, body.data);
     return res.ok ? res : reply.code(409).send({ error: res.message, reason: res.reason, output: res.output });
   });
 

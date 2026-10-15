@@ -197,11 +197,15 @@ function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
     );
   }
 
+  // A run is "completed" when at least one task merged; the rest may have failed or been skipped.
+  const unfinished = run.tasks.filter((t) => t.status !== 'merged');
+  const partial = unfinished.length > 0;
+
   const act = async (what: 'ship' | 'mark') => {
     setStep('busy');
     setError(undefined);
     try {
-      const res = what === 'ship' ? await api.ship(run.id) : await api.markShipped(run.id).then(() => ({ ok: true as const }));
+      const res = what === 'ship' ? await api.ship(run.id, partial) : await api.markShipped(run.id).then(() => ({ ok: true as const }));
       // On success the run.shipped event refreshes progress, which flips this bar to "harvested".
       if (!res.ok) {
         setError(res);
@@ -217,10 +221,17 @@ function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
     <div className="shipbar shipbar--ready">
       <span>
         Ready to ship: <b>{ship.growth} growth</b> waiting to be harvested.
+        {partial && ` ${run.tasks.length - unfinished.length} of ${run.tasks.length} tasks finished.`}
       </span>
       {step === 'confirm' && (
         <span className="shipbar__explain">
           This merges <code>{run.integrationBranch}</code> into your main branch as a merge commit, with your name on it. If main changed since the project started, the full test suite runs first. If anything is wrong, nothing changes.
+          {partial && (
+            <>
+              {' '}
+              <b>Only the finished work ships.</b> Left out: {unfinished.map((t) => t.contract.title).join('; ')}.
+            </>
+          )}
         </span>
       )}
       {step === 'mark' && <span className="shipbar__explain">Only if this work is already in your main branch, for example from a squash merge. This records it as shipped without merging anything.</span>}
@@ -243,7 +254,7 @@ function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
           {step === 'confirm' && (
             <>
               <button type="button" className="btn-ship" onClick={() => void act('ship')}>
-                Ship it
+                {partial ? 'Ship the finished tasks' : 'Ship it'}
               </button>
               <button type="button" className="btn-quiet" onClick={() => setStep('idle')}>
                 Not yet

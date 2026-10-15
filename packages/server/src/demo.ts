@@ -99,10 +99,14 @@ export class DemoBackend implements Backend {
   }
 
   /** No repository in demo mode: shipping is a simulated merge, so the whole loop is visible. */
-  async ship(runId: string): Promise<ShipResult> {
+  async ship(runId: string, opts: { partial?: boolean } = {}): Promise<ShipResult> {
     const done = this.ships.get(runId);
     if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
-    if (this.runs.get(runId)?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    const run = this.runs.get(runId);
+    if (run?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    // same rule as the live orchestrator
+    const unfinished = run.tasks.filter((t) => t.status !== 'merged').length;
+    if (unfinished && !opts.partial) return { ok: false, reason: 'incomplete', message: `Only ${run.tasks.length - unfinished} of ${run.tasks.length} tasks finished. Confirm a partial ship to ship just the finished work.` };
     return { ok: true, sha: this.recordShip(runId, 'merged'), alreadyShipped: false, tested: false };
   }
 
