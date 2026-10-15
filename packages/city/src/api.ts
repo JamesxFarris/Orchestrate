@@ -37,22 +37,26 @@ const PROGRESS_EVENTS = new Set<OrchestrateEvent['type']>(['task.status', 'run.s
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let harvestFor: string | undefined;
 
-/** Refetch progress (debounced). After a ship, compare before/after and open the Harvest screen. */
-function refreshProgress(e: OrchestrateEvent): void {
-  if (e.type === 'run.shipped') harvestFor = e.runId;
+/**
+ * Refetch progress (debounced). After a ship, compare before/after and open the Harvest screen.
+ * A failed fetch is retried a few times: after a ship, it is the only thing that opens the Harvest
+ * screen and turns the Ship bar from "Shipping…" to "Harvested".
+ */
+function refreshProgress(e?: OrchestrateEvent, attempt = 0): void {
+  if (e?.type === 'run.shipped') harvestFor = e.runId;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(async () => {
-    const shipped = harvestFor;
-    harvestFor = undefined;
     try {
       const before = useCity.getState().progress;
       const after = await api.progress();
+      const shipped = harvestFor;
+      harvestFor = undefined;
       useCity.getState().setProgress(after);
       if (shipped) useCity.getState().openHarvest({ runId: shipped, levelUps: before ? levelUps(before, after) : [] });
     } catch {
-      /* the next event or reconnect will refresh */
+      if (attempt < 5) refreshProgress(undefined, attempt + 1);
     }
-  }, 250);
+  }, attempt ? 1000 * 2 ** attempt : 250);
 }
 
 /** Load the org + live state, then stream events. Reconnects with backoff. */
@@ -61,21 +65,38 @@ export function connect(): () => void {
   let ws: WebSocket | undefined;
   let stopped = false;
   let delay = 500;
+  // While a boot fetches the snapshot, events keep streaming in. They are newer than the snapshot,
+  // so they wait here and are applied on top of it, rather than being overwritten by it.
+  let queued: OrchestrateEvent[] | undefined;
+  let generation = 0;
+
+  const deliver = (e: OrchestrateEvent) => {
+    useCity.getState().ingest(e);
+    if (PROGRESS_EVENTS.has(e.type)) refreshProgress(e);
+  };
 
   const boot = async () => {
+    const gen = ++generation;
+    queued = [];
     try {
       const [team, state] = await Promise.all([api.team(), api.state()]);
-      city.setTeam(team);
-      city.hydrate(state.agents, state.runs);
-      if (state.progress) city.setProgress(state.progress);
       const current = state.runs[0];
       // Restore the current run's logs and verdicts so panels have context after a reload.
-      if (current) {
-        const history = (await api.events(current.id)).filter((e) => REPLAY.has(e.type));
-        useCity.setState({ events: history.slice(-400) });
-      }
+      const history = current ? (await api.events(current.id)).filter((e) => REPLAY.has(e.type)).slice(-400) : undefined;
+      if (gen !== generation) return; // a newer connection is booting; this snapshot is stale
+
+      // a new team object rebuilds the whole scene, so only replace it when it changed
+      if (JSON.stringify(team) !== JSON.stringify(useCity.getState().team)) city.setTeam(team);
+      city.hydrate(state.agents, state.runs);
+      if (state.progress) city.setProgress(state.progress);
+      if (history) useCity.setState({ events: history });
+      const seen = new Set(history?.map((e) => JSON.stringify(e)));
+      for (const e of queued ?? []) if (!seen.has(JSON.stringify(e))) deliver(e);
     } catch {
       /* daemon not up yet; the socket loop retries */
+      if (gen === generation) for (const e of queued ?? []) deliver(e);
+    } finally {
+      if (gen === generation) queued = undefined;
     }
   };
 
@@ -91,8 +112,8 @@ export function connect(): () => void {
     ws.onmessage = (m) => {
       const data = JSON.parse(m.data as string) as OrchestrateEvent | { type: 'hello' };
       if (data.type === 'hello') return;
-      useCity.getState().ingest(data);
-      if (PROGRESS_EVENTS.has(data.type)) refreshProgress(data);
+      if (queued) queued.push(data);
+      else deliver(data);
     };
     ws.onclose = () => {
       useCity.getState().setConnected(false);

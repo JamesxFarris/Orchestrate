@@ -320,6 +320,10 @@ code {
   font-family: var(--mono);
   color: var(--muted);
 }
+.action-error {
+  color: var(--danger);
+  font-size: 12px;
+}
 @keyframes pulse {
   50% {
     opacity: 0.35;

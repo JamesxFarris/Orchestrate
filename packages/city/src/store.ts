@@ -109,7 +109,8 @@ export const useCity = create<CityState>((set, get) => ({
       for (const a of agents) byId[a.agentId] = a;
       const runMap: Record<string, RunState> = {};
       for (const r of runs) runMap[r.id] = r;
-      return { agents: byId, runs: runMap, currentRunId: runs[0]?.id };
+      // the circle sits while the current run is under review; a snapshot taken after it adjourned must clear it
+      return { agents: byId, runs: runMap, currentRunId: runs[0]?.id, circleActive: runs[0]?.status === 'reviewing' };
     }),
 
   upsertRun: (r) => set((s) => ({ runs: { ...s.runs, [r.id]: r } })),
@@ -145,7 +146,7 @@ export const useCity = create<CityState>((set, get) => ({
         if (run) next.runs = { ...s.runs, [e.runId]: { ...run, summary: e.summary, integrationBranch: e.branch } };
         break;
       case 'task.status':
-        next.runs = { ...s.runs, [e.runId]: patchTask(run, e.taskId, e.status, e.detail)! };
+        if (run) next.runs = { ...s.runs, [e.runId]: patchTask(run, e.taskId, e.status, e.detail)! };
         break;
       case 'circle.convened':
         next.circleActive = true;
