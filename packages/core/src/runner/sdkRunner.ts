@@ -72,7 +72,9 @@ export class SdkRunner implements AgentRunner {
       settingSources: [],
       persistSession: false,
       abortController: abort,
-      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'orchestrate/0.1.0' },
+      // The CLI needs the API key, but the commands an agent runs (its tests) must not see it:
+      // SUBPROCESS_ENV_SCRUB strips Anthropic credentials from every process the CLI spawns.
+      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'orchestrate/0.1.0', CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' },
       ...(inv.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: inv.outputSchema } } : {}),
     };
 

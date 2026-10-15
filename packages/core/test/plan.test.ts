@@ -6,7 +6,7 @@ import { circleReviewSystem } from '../src/prompts.ts';
 import { Org, TeamConfigError } from '../src/org/org.ts';
 import { schedule, topoOrder } from '../src/plan/dag.ts';
 import { validatePlan } from '../src/plan/validatePlan.ts';
-import { isShellSafePath, testFilesCommand } from '../src/gates/gates.ts';
+import { gateEnv, isShellSafePath, runCommand, testFilesCommand } from '../src/gates/gates.ts';
 
 const preset = path.resolve(import.meta.dirname, '../../../presets/corpsegrinder.team.yaml');
 const org = Org.load(preset);
@@ -203,5 +203,32 @@ describe('role titles', () => {
   it('tells each agent which squad it belongs to', () => {
     expect(circleReviewSystem(org, role('gameplay-lead'))).toContain('You are Tech Lead in the Gameplay squad (gameplay-lead)');
     expect(circleReviewSystem(org, role('architect'))).toContain('You are Principal Architect (architect)');
+  });
+});
+
+describe('gate commands run without credentials', () => {
+  it('drops keys, tokens and secrets, and keeps everything else', () => {
+    const env = gateEnv({ PATH: '/bin', HOME: '/h', ANTHROPIC_API_KEY: 'sk-ant', CLAUDE_CODE_OAUTH_TOKEN: 't', GITHUB_TOKEN: 'g', AWS_SECRET_ACCESS_KEY: 'a', DB_PASSWORD: 'p', STRIPE_SECRET: 's', NODE_ENV: 'test' });
+    expect(Object.keys(env).sort()).toEqual(['CI', 'FORCE_COLOR', 'HOME', 'NODE_ENV', 'PATH']);
+  });
+  it('lets named variables through when a project needs them', () => {
+    expect(gateEnv({ NPM_TOKEN: 'n', ORCH_GATE_ENV_KEEP: 'NPM_TOKEN' }).NPM_TOKEN).toBe('n');
+  });
+  it('a test command cannot read the API key', async () => {
+    const before = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-should-not-leak';
+    try {
+      const r = await runCommand(`node -e "console.log(process.env.ANTHROPIC_API_KEY ?? 'no key')"`, process.cwd(), 20_000);
+      expect(r.output.trim()).toBe('no key');
+    } finally {
+      if (before === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = before;
+    }
+  });
+  it('does not start a command that was already cancelled', async () => {
+    const c = new AbortController();
+    c.abort();
+    const r = await runCommand('node -e "setTimeout(() => {}, 60000)"', process.cwd(), 60_000, c.signal);
+    expect(r).toMatchObject({ ok: false, output: 'cancelled before it started' });
   });
 });
