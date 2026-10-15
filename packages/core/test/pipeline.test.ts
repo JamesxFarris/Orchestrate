@@ -22,7 +22,7 @@ function phaseOf(ctx: FakeAgentContext): Phase {
   return 'implement';
 }
 
-type Script = Partial<Record<Phase, (ctx: FakeAgentContext) => FakeReply | void>>;
+type Script = Partial<Record<Phase, (ctx: FakeAgentContext) => Promise<FakeReply | void> | FakeReply | void>>;
 
 /** Well-behaved team for the "sum" feature; individual phases can be overridden per test. */
 function team(plan: Plan | ((ctx: FakeAgentContext) => Plan), script: Script = {}) {
@@ -312,6 +312,49 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     expect(env.orch.get(a.id)!.detail).toMatch(/still had concerns.*rename the task/);
     env.orch.cancel(a.id);
     expect((await env.orch.wait(a.id)).status).toBe('cancelled');
+  });
+
+  it('after a restart, marks runs that were going as failed and removes their worktrees', async () => {
+    let release!: () => void;
+    const stuck = new Promise<void>((r) => (release = r));
+    let implementing = false;
+    const env = setup(
+      team(sumPlan, {
+        implement: async (ctx) => {
+          implementing = true;
+          await stuck; // the daemon "dies" while the implementer works
+          ctx.submit('late');
+        },
+      }),
+    );
+    const a = env.orch.submit('add sum');
+    await waitFor(() => implementing);
+    const worktrees = () => sh(env.repo, 'worktree', 'list').split('\n').filter((l) => l.includes(a.id)).length;
+    expect(worktrees()).toBe(2); // the integration worktree and the task's
+
+    // a new daemon on the same database
+    const restarted = new Orchestrator({ org: fixtureOrg(), runner: team(sumPlan), repoRoot: env.repo, workDir: env.work, store: env.store });
+    expect(await restarted.recoverInterrupted()).toEqual([a.id]);
+    const run = restarted.get(a.id)!;
+    expect(run.status).toBe('failed');
+    expect(run.detail).toMatch(/daemon stopped while this run was executing/);
+    expect(run.tasks.every((t) => t.status === 'skipped')).toBe(true);
+    expect(worktrees()).toBe(0);
+    expect(sh(env.repo, 'branch', '--list', `orch/${a.id}/*`)).toBe('');
+    expect(sh(env.repo, 'branch', '--list', `orch/run-${a.id}`)).not.toBe(''); // kept: it may hold merged work
+    expect(await restarted.recoverInterrupted()).toEqual([]); // only once
+
+    env.orch.cancel(a.id);
+    release();
+    await env.orch.wait(a.id);
+  });
+
+  it('shutdown cancels active runs and waits for them to finish cleaning up', async () => {
+    const env = setup(team(sumPlan), { policy: { requireHumanApproval: true, maxRetries: 1, maxChangedLines: 200, circleRevisionRounds: 0, maxParallel: 1 } });
+    const a = env.orch.submit('add sum');
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    await env.orch.shutdown();
+    expect(env.store.getRun(a.id)!.status).toBe('cancelled');
   });
 
   it('waits at the human gate until approved, and can be cancelled there', async () => {

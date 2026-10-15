@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { rmdirSync } from 'node:fs';
 import path from 'node:path';
 import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
@@ -20,6 +21,9 @@ import { computeProgress, finishedAt } from './progress/progress.ts';
 import { READ_TOOLS, type AgentRunner } from './runner/types.ts';
 import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
 import type { ShipRecord, Store } from './store/store.ts';
+
+const FINISHED = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
+const TASK_FINISHED = new Set<TaskState['status']>(['merged', 'failed', 'escalated', 'skipped']);
 
 export interface OrchestratorOptions {
   org: Org;
@@ -197,6 +201,60 @@ export class Orchestrator {
     return true;
   }
 
+  /**
+   * Cancel every active run and wait (up to `timeoutMs`) until each has recorded its status and
+   * removed its worktrees. Without the wait, a stop left runs "executing" forever and worktrees on disk.
+   */
+  async shutdown(timeoutMs = 20_000): Promise<void> {
+    const active = [...this.controllers.keys()];
+    for (const id of active) this.cancel(id, 'the daemon is shutting down');
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<void>((r) => (timer = setTimeout(r, timeoutMs)));
+    await Promise.race([Promise.allSettled(active.map((id) => this.wait(id))), limit]);
+    clearTimeout(timer);
+  }
+
+  /**
+   * After a restart, runs the store still shows as going have nothing behind them: approvals and
+   * cancellation live in memory, so they could never finish, be approved or be cancelled. Mark them
+   * failed and remove their worktrees and task branches (the integration branch is kept, in case it
+   * holds work). Call once at startup, before taking requests. Returns the recovered run ids.
+   */
+  async recoverInterrupted(): Promise<string[]> {
+    const recovered: string[] = [];
+    for (const run of this.store?.listRuns(Number.MAX_SAFE_INTEGER) ?? []) {
+      if (FINISHED.has(run.status) || this.controllers.has(run.id)) continue;
+      const was = run.status.replace('_', ' ');
+      for (const t of run.tasks) if (!TASK_FINISHED.has(t.status)) t.status = 'skipped';
+      this.setStatus(run, 'failed', `The daemon stopped while this run was ${was}. Submit it again to retry.`);
+      await this.removeRunWorktrees(run.id).catch((e) => console.error(`[run ${run.id}] could not remove worktrees:`, e));
+      await this.cleanupBranches(run.id).catch(() => undefined);
+      recovered.push(run.id);
+    }
+    return recovered;
+  }
+
+  /** Remove the git worktrees a run left under its work folder, never deleting through linked dirs. */
+  private async removeRunWorktrees(runId: string): Promise<void> {
+    const runDir = path.join(this.workDir, runId);
+    const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const out = await g.git(this.repoRoot, ['worktree', 'list', '--porcelain']);
+    for (const block of out.split(/\n\s*\n/)) {
+      const dir = /^worktree (.+)$/m.exec(block)?.[1];
+      if (!dir) continue;
+      const abs = path.resolve(dir);
+      if (!same(path.dirname(abs), runDir)) continue;
+      const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? '';
+      await g.removeWorktree(this.repoRoot, { dir: abs, branch }, this.org.project.linkDirs);
+    }
+    await g.git(this.repoRoot, ['worktree', 'prune']).catch(() => undefined);
+    try {
+      rmdirSync(runDir); // only if empty: anything left is not ours to delete blindly
+    } catch {
+      // not empty or already gone
+    }
+  }
+
   get(runId: string): RunState | undefined {
     return this.runs.get(runId) ?? this.store?.getRun(runId);
   }
@@ -364,10 +422,11 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
     const integration = new Integration(this.repoRoot, run.id, this.workDir, org.project.linkDirs);
     ctx.integration = integration;
     run.integrationBranch = integration.branch;
-    await integration.init(baseRef, org.gates, ctx.signal);
 
     const running = new Map<string, Promise<void>>();
     try {
+      // inside the try, so a failed or cancelled setup still removes the integration worktree
+      await integration.init(baseRef, org.gates, ctx.signal);
       for (;;) {
         ctx.throwIfCancelled();
         const { ready, blocked } = schedule(run.tasks, org.policy.maxParallel);

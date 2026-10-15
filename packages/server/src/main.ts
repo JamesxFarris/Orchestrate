@@ -33,6 +33,9 @@ if (values.demo) {
   const store = new Store(path.resolve(values.db!));
   const orch = new Orchestrator({ org, runner: new SdkRunner(), repoRoot, store });
   backend = liveBackend(orch, store);
+  // Runs that were going when the daemon last stopped can never finish: say so, and clean up.
+  const recovered = await orch.recoverInterrupted();
+  if (recovered.length) console.log(`[orchestrate] marked ${recovered.length} interrupted run(s) as failed: ${recovered.join(', ')}`);
   // Fallback for projects merged outside Orchestrate: one cheap check a minute.
   stopShipWatch = orch.watchShips();
   console.log(`[orchestrate] target repo: ${repoRoot}`);
@@ -43,10 +46,19 @@ const app = await buildApp({ backend, staticDir: path.join(HOME, 'packages', 'ci
 await app.listen({ host: '127.0.0.1', port });
 console.log(`[orchestrate] ${backend.mode} mode · team "${org.project.name}" (${org.roles.length} agents) · http://127.0.0.1:${port}`);
 
+// Stop: cancel runs and give them time to record "cancelled" and remove their worktrees. A second
+// Ctrl+C exits straight away.
+let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
+    if (stopping) process.exit(1);
+    stopping = true;
+    console.log('[orchestrate] stopping: cancelling active runs (Ctrl+C again to force)…');
     stopShipWatch();
-    for (const r of backend.list()) if (!['completed', 'failed', 'cancelled'].includes(r.status)) backend.cancel(r.id);
-    void app.close().then(() => process.exit(0));
+    void backend
+      .shutdown()
+      .then(() => app.close())
+      .catch((e) => console.error('[orchestrate] error while stopping:', e))
+      .finally(() => process.exit(0));
   });
 }
