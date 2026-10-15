@@ -320,6 +320,10 @@ code {
   font-family: var(--mono);
   color: var(--muted);
 }
+.action-error {
+  color: var(--danger);
+  font-size: 12px;
+}
 @keyframes pulse {
   50% {
     opacity: 0.35;
@@ -1092,6 +1096,12 @@ code {
 }
 .card--blocked {
   animation: blocked-pulse 0.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card--blocked,
+  .runpill__dot {
+    animation: none;
+  }
 }
 @keyframes blocked-pulse {
   50% {

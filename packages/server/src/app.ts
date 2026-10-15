@@ -22,6 +22,14 @@ const SubmitBody = z.object({
   baseRef: z.string().max(200).optional(),
 });
 
+/** A WebSocket client this far behind is dropped rather than buffered without limit. */
+const MAX_BUFFERED = 4 * 1024 * 1024;
+/** Ping interval; a client that misses one pong is dropped. */
+const HEARTBEAT_MS = 30_000;
+
+/** `partial`: ship a run even though some of its tasks did not finish (the caller has said so). */
+const ShipBody = z.object({ partial: z.boolean().optional() });
+
 export interface AppOptions {
   backend: Backend;
   /** Built city assets to serve at "/". */
@@ -79,7 +87,9 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
     return run ?? reply.code(404).send({ error: 'not found' });
   });
 
-  app.get<{ Params: { id: string } }>('/api/runs/:id/events', async (req) => backend.events(req.params.id));
+  app.get<{ Params: { id: string } }>('/api/runs/:id/events', async (req, reply) =>
+    backend.get(req.params.id) ? backend.events(req.params.id) : reply.code(404).send({ error: 'not found' }),
+  );
 
   app.post('/api/runs', async (req, reply) => {
     const body = SubmitBody.safeParse(req.body);
@@ -98,7 +108,9 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
 
   // Ship it. A refusal is a 409 carrying the reason and git's output, so the UI can say why.
   app.post<{ Params: { id: string } }>('/api/runs/:id/ship', async (req, reply) => {
-    const res = await backend.ship(req.params.id);
+    const body = ShipBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: body.error.issues.map((i) => i.message).join('; ') });
+    const res = await backend.ship(req.params.id, body.data);
     return res.ok ? res : reply.code(409).send({ error: res.message, reason: res.reason, output: res.output });
   });
 
@@ -109,8 +121,24 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
   // the onRequest hook has already refused foreign hosts and origins before the upgrade
   app.get('/ws', { websocket: true }, (socket) => {
     socket.send(JSON.stringify({ type: 'hello', mode: backend.mode, agents: backend.bus.agentSnapshots() }));
-    const off = backend.bus.on((e) => socket.send(JSON.stringify(e)));
-    socket.on('close', off);
+    // A stalled tab or a half-open connection would otherwise buffer every agent.log forever.
+    // Dropped clients reconnect and reload the state (the city queues events while it does).
+    const off = backend.bus.on((e) => {
+      if (socket.readyState !== socket.OPEN) return;
+      if (socket.bufferedAmount > MAX_BUFFERED) return socket.terminate();
+      socket.send(JSON.stringify(e));
+    });
+    let alive = true;
+    socket.on('pong', () => (alive = true));
+    const heartbeat = setInterval(() => {
+      if (!alive) return socket.terminate();
+      alive = false;
+      socket.ping();
+    }, HEARTBEAT_MS);
+    socket.on('close', () => {
+      off();
+      clearInterval(heartbeat);
+    });
   });
 
   if (staticDir && existsSync(staticDir)) {

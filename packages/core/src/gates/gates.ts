@@ -15,10 +15,27 @@ function tail(s: string, n = MAX_OUTPUT): string {
   return s.length > n ? `…${s.slice(-n)}` : s;
 }
 
+/** Variables that look like credentials: provider keys, tokens, secrets, passwords. */
+const SECRET_ENV = /^(ANTHROPIC|CLAUDE|OPENAI|AWS|AZURE|GOOGLE|GCP)_|(_TOKEN|_KEY|_SECRET|_PASSWORD|_CREDENTIALS?)$|^(GH_TOKEN|GITHUB_TOKEN|NPM_TOKEN)$/i;
+
+/**
+ * The environment gate commands run with. They execute code agents wrote (tests, setup scripts),
+ * so credentials are left out: an agent could otherwise read the API key from inside a test.
+ * `ORCH_GATE_ENV_KEEP=NAME,NAME` lets named variables through (e.g. a private registry token).
+ */
+export function gateEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const keep = new Set((env.ORCH_GATE_ENV_KEEP ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) if (keep.has(k) || !SECRET_ENV.test(k)) out[k] = v;
+  return { ...out, CI: '1', FORCE_COLOR: '0' };
+}
+
 /** Run a shell command; output is stdout+stderr interleaved, tail-truncated. */
 export function runCommand(command: string, cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<CommandResult> {
+  // an abort listener added to an already-aborted signal never fires, so the command would run to its timeout
+  if (signal?.aborted) return Promise.resolve({ ok: false, code: null, output: 'cancelled before it started', timedOut: false });
   return new Promise((resolve) => {
-    const child = spawn(command, { cwd, shell: true, windowsHide: true, env: { ...process.env, CI: '1', FORCE_COLOR: '0' } });
+    const child = spawn(command, { cwd, shell: true, windowsHide: true, env: gateEnv() });
     let out = '';
     let timedOut = false;
     const onData = (b: Buffer) => {

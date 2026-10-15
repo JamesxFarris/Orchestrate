@@ -5,8 +5,10 @@ import type { Backend } from './backend.ts';
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => (clearTimeout(t), reject(new Error('cancelled'))), { once: true });
+    const onAbort = () => (clearTimeout(t), reject(new Error('cancelled')));
+    // remove the listener when the timer fires, or every wait of a run leaves one on its signal
+    const t = setTimeout(() => (signal.removeEventListener('abort', onAbort), resolve()), ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 
 const DEV_LINES = [
@@ -62,11 +64,17 @@ export class DemoBackend implements Backend {
     const c = new AbortController();
     this.controllers.set(id, c);
     this.emit({ type: 'run.created', runId: id, prompt });
-    void this.simulate(run, c.signal, !!opts.autoApprove).catch(() => {
-      for (const r of this.org.roles) this.emit({ type: 'agent.activity', runId: id, agentId: r.id, activity: 'idle' });
-      run.status = 'cancelled';
-      this.emit({ type: 'run.status', runId: id, status: 'cancelled' });
-    });
+    void this.simulate(run, c.signal, !!opts.autoApprove)
+      .catch(() => {
+        for (const r of this.org.roles) this.emit({ type: 'agent.activity', runId: id, agentId: r.id, activity: 'idle' });
+        run.status = 'cancelled';
+        this.emit({ type: 'run.status', runId: id, status: 'cancelled' });
+      })
+      // like the live orchestrator: a finished run can no longer be cancelled or approved
+      .finally(() => {
+        this.controllers.delete(id);
+        this.approvals.delete(id);
+      });
     return run;
   }
 
@@ -81,6 +89,7 @@ export class DemoBackend implements Backend {
     const c = this.controllers.get(runId);
     if (!c || c.signal.aborted) return false;
     c.abort();
+    this.approvals.delete(runId);
     return true;
   }
 
@@ -99,10 +108,14 @@ export class DemoBackend implements Backend {
   }
 
   /** No repository in demo mode: shipping is a simulated merge, so the whole loop is visible. */
-  async ship(runId: string): Promise<ShipResult> {
+  async ship(runId: string, opts: { partial?: boolean } = {}): Promise<ShipResult> {
     const done = this.ships.get(runId);
     if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
-    if (this.runs.get(runId)?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    const run = this.runs.get(runId);
+    if (run?.status !== 'completed') return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+    // same rule as the live orchestrator
+    const unfinished = run.tasks.filter((t) => t.status !== 'merged').length;
+    if (unfinished && !opts.partial) return { ok: false, reason: 'incomplete', message: `Only ${run.tasks.length - unfinished} of ${run.tasks.length} tasks finished. Confirm a partial ship to ship just the finished work.` };
     return { ok: true, sha: this.recordShip(runId, 'merged'), alreadyShipped: false, tested: false };
   }
 

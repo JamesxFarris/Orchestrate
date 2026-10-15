@@ -13,7 +13,7 @@ export interface Backend {
   list(): RunState[];
   events(runId: string): OrchestrateEvent[];
   /** Merge a completed run into the default branch (see core ship/ship.ts). */
-  ship(runId: string): Promise<ShipResult>;
+  ship(runId: string, opts?: { partial?: boolean }): Promise<ShipResult>;
   /** Record a run as shipped by hand, for merges detection cannot see (squash, rebase). */
   markShipped(runId: string): Promise<boolean>;
   progress(): ProgressSnapshot;
@@ -32,7 +32,7 @@ export function liveBackend(orch: Orchestrator, store: Store): Backend {
     get: (id) => orch.get(id),
     list: () => orch.list(),
     events: (id) => store.events(id),
-    ship: (id) => orch.ship(id),
+    ship: (id, opts) => orch.ship(id, opts),
     markShipped: (id) => orch.markShipped(id),
     progress: () => orch.progress(),
     shutdown: async () => {

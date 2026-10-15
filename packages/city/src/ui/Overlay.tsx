@@ -4,6 +4,7 @@ import { api } from '../api.ts';
 import { CollapsiblePanel } from './CollapsiblePanel.tsx';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity, useCurrentRun } from '../store.ts';
 import { RoleIcon } from './roleIcons.tsx';
+import { useDialog } from './useDialog.ts';
 
 const STATUS_LABEL: Record<RunState['status'], string> = {
   planning: 'Planning',
@@ -15,11 +16,38 @@ const STATUS_LABEL: Record<RunState['status'], string> = {
   cancelled: 'Cancelled',
 };
 
+/**
+ * A button's request to the daemon: one at a time (a double-click sends nothing twice), the
+ * buttons disabled meanwhile, and a refusal kept to show rather than failing silently.
+ */
+function useAction() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const inFlight = useRef(false);
+  const run = async (request: () => Promise<unknown>, onDone?: () => void) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await request();
+      onDone?.();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
+  return { busy, error, run };
+}
+
 export function TopBar({ onOpenPlan }: { onOpenPlan: () => void }) {
   const team = useCity((s) => s.team);
   const connected = useCity((s) => s.connected);
   const run = useCurrentRun();
   const live = run && !['completed', 'failed', 'cancelled'].includes(run.status);
+  const action = useAction();
 
   return (
     <header className="topbar">
@@ -53,14 +81,19 @@ export function TopBar({ onOpenPlan }: { onOpenPlan: () => void }) {
             </button>
           )}
           {run.status === 'awaiting_approval' && (
-            <button className="btn btn--go" onClick={() => void api.approve(run.id)}>
+            <button className="btn btn--go" disabled={action.busy} onClick={() => void action.run(() => api.approve(run.id))}>
               Approve
             </button>
           )}
           {live && (
-            <button className="btn btn--ghost btn--danger" onClick={() => void api.cancel(run.id)}>
+            <button className="btn btn--ghost btn--danger" disabled={action.busy} onClick={() => void action.run(() => api.cancel(run.id))}>
               Cancel
             </button>
+          )}
+          {action.error && (
+            <span className="action-error" role="alert">
+              {action.error}
+            </span>
           )}
         </div>
       )}
@@ -283,6 +316,10 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const run = useCurrentRun();
   const events = useCity((s) => s.events);
   const team = useCity((s) => s.team);
+  const action = useAction();
+  const drawer = useRef<HTMLDivElement>(null);
+  // it opens by itself at the approval gate, so it has to take focus and close on Escape
+  useDialog(drawer, open && !!run?.plan, onClose);
   if (!open || !run?.plan) return null;
   const reviews = events.filter((e) => e.type === 'circle.review' && e.runId === run.id);
   const title = (id: string) => {
@@ -292,7 +329,7 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="drawer" role="dialog" aria-label="Plan" onClick={(e) => e.stopPropagation()}>
+      <div ref={drawer} className="drawer" role="dialog" aria-modal="true" aria-label="Plan" onClick={(e) => e.stopPropagation()}>
         <button className="panel__close" onClick={onClose} aria-label="Close">
           ×
         </button>
@@ -352,10 +389,15 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         )}
         {run.status === 'awaiting_approval' && (
           <div className="drawer__actions">
-            <button className="btn btn--ghost btn--danger" onClick={() => void api.cancel(run.id).then(onClose)}>
+            {action.error && (
+              <span className="action-error" role="alert">
+                {action.error}
+              </span>
+            )}
+            <button className="btn btn--ghost btn--danger" disabled={action.busy} onClick={() => void action.run(() => api.cancel(run.id), onClose)}>
               Reject
             </button>
-            <button className="btn btn--go" onClick={() => void api.approve(run.id).then(onClose)}>
+            <button className="btn btn--go" disabled={action.busy} onClick={() => void action.run(() => api.approve(run.id), onClose)}>
               Approve & start
             </button>
           </div>

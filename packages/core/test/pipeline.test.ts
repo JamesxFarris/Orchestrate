@@ -382,6 +382,29 @@ async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
 describe('shipping and progression (real git)', () => {
   const district = (env: ReturnType<typeof setup>, squad: string) => env.orch.progress().districts.find((d) => d.squad === squad)!;
 
+  it('ships a run where only some tasks finished only when asked to ship it partially', async () => {
+    // the scripted QA only ever writes the sum test, so the "extra" task never gets past QA
+    const env = setup(team(planOf(codeTask({ id: 'sum' }), codeTask({ id: 'extra' }))));
+    const run = await env.orch.wait(env.orch.submit('add sum and extra').id);
+    expect(run.status).toBe('completed');
+    expect(run.tasks.map((t) => t.status).sort()).toEqual(['escalated', 'merged']);
+
+    const refused = await env.orch.ship(run.id);
+    expect(refused).toMatchObject({ ok: false, reason: 'incomplete', message: expect.stringMatching(/Only 1 of 2 tasks finished \(not: Task extra\)/) });
+    expect(sh(env.repo, 'rev-parse', 'main')).toBe(env.mainBefore);
+
+    expect(await env.orch.ship(run.id, { partial: true })).toMatchObject({ ok: true });
+    expect(existsSync(path.join(env.repo, 'src', 'sum.js'))).toBe(true);
+  });
+
+  it('re-tests a moved main with the test command when no separate full suite is configured', async () => {
+    const env = setup(team(sumPlan), { gates: { test: 'node --test', testFiles: 'node --test {files}', timeoutMs: 60_000 } });
+    const run = await env.orch.wait(env.orch.submit('add a sum function').id);
+    sh(env.repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'meanwhile on main');
+    const res = await env.orch.ship(run.id);
+    expect(res).toMatchObject({ ok: true, tested: true });
+  });
+
   it('Ship it lands a completed run on main as a merge commit and banks its growth', async () => {
     const env = setup(team(sumPlan));
     const run = await env.orch.wait(env.orch.submit('add a sum function').id);

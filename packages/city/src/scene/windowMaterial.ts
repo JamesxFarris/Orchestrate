@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { REDUCED_MOTION } from '../motion.ts';
 import { PALETTE } from '../palette.ts';
 
 export const SUN_DIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize();
@@ -64,7 +65,7 @@ const LIGHTS = /* glsl */ `
   em += uReviewing * (0.5 + step(h, 0.7) * 1.2) * breathe * uWeights.z;
 
   // blocked: strobe
-  float strobe = step(0.5, fract(uTime * 2.4));
+  float strobe = ${REDUCED_MOTION ? '0.5' : 'step(0.5, fract(uTime * 2.4))'};
   em += uBlocked * step(h, 0.9) * (0.4 + 2.4 * strobe) * uWeights.w;
 
   em += uFlashColor * 2.2 * uFlash;

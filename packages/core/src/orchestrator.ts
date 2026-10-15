@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { rmdirSync } from 'node:fs';
 import path from 'node:path';
-import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, roleName, RunSummary, type OrchestrateEvent, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -23,6 +23,8 @@ import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
 import type { ShipRecord, Store } from './store/store.ts';
 
 const FINISHED = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
+/** The only events progress reads: what each task cost, its escalations, and when the run ended. */
+const PROGRESS_EVENT_TYPES: OrchestrateEvent['type'][] = ['agent.cost', 'escalation', 'run.status'];
 const TASK_FINISHED = new Set<TaskState['status']>(['merged', 'failed', 'escalated', 'skipped']);
 
 export interface OrchestratorOptions {
@@ -57,6 +59,8 @@ export class Orchestrator {
   private readonly approvals = new Map<string, { resolve: () => void; reject: (e: Error) => void }>();
   private readonly done = new Map<string, Promise<RunState>>();
   private readonly ships = new Map<string, ShipRecord>();
+  /** Progress events of finished runs, which never change (see progress()). */
+  private readonly progressEvents = new Map<string, OrchestrateEvent[]>();
   /** Ships and ship detection run one at a time, so a run is never recorded twice. */
   private shipLock: Promise<unknown> = Promise.resolve();
   private lastTargetHead?: string;
@@ -77,13 +81,26 @@ export class Orchestrator {
 
   // ---------------------------------------------------------------- shipping & progression
 
-  /** Ship it: merge a completed run into the default branch. Safety rules live in ship/ship.ts. */
-  ship(runId: string): Promise<ShipResult> {
+  /**
+   * Ship it: merge a completed run into the default branch. Safety rules live in ship/ship.ts.
+   * A run where some tasks did not finish is still "completed", so shipping it needs `partial`:
+   * whoever ships has to have seen that only part of the feature is there.
+   */
+  ship(runId: string, opts: { partial?: boolean } = {}): Promise<ShipResult> {
     return this.serialShip(async () => {
       const done = this.ships.get(runId);
       if (done) return { ok: true, sha: done.sha, alreadyShipped: true, tested: false };
       const run = this.get(runId);
       if (!run || run.status !== 'completed' || !run.integrationBranch) return { ok: false, reason: 'not-ready', message: 'Only a completed project can ship.' };
+      const unfinished = run.tasks.filter((t) => t.status !== 'merged');
+      if (unfinished.length && !opts.partial) {
+        const finished = run.tasks.length - unfinished.length;
+        return {
+          ok: false,
+          reason: 'incomplete',
+          message: `Only ${finished} of ${run.tasks.length} tasks finished (not: ${unfinished.map((t) => t.contract.title).join('; ')}). Confirm a partial ship to ship just the finished work.`,
+        };
+      }
       const res = await shipRun({
         repoRoot: this.repoRoot,
         runId,
@@ -91,7 +108,7 @@ export class Orchestrator {
         target: this.org.project.defaultBranch,
         workDir: this.workDir,
         links: this.org.project.linkDirs,
-        fullGate: this.org.gates.full,
+        fullGate: this.org.gates.full ?? this.org.gates.test, // GateConfig: full defaults to test
         timeoutMs: this.org.gates.timeoutMs,
         message: `Ship ${run.integrationBranch}: ${run.prompt.split('\n')[0]!.slice(0, 72)}`,
       });
@@ -138,7 +155,13 @@ export class Orchestrator {
   /** Districts' growth, settlements and streaks, derived from stored runs, events and ships. */
   progress(): ProgressSnapshot {
     const facts = this.allRuns().map((run) => {
-      const events = this.store?.events(run.id) ?? [];
+      // Progress reads only costs, escalations and the final status. A finished run's are settled,
+      // so they are read once; this runs on every task change, for every run ever.
+      let events = this.progressEvents.get(run.id);
+      if (!events) {
+        events = this.store?.events(run.id, PROGRESS_EVENT_TYPES) ?? [];
+        if (FINISHED.has(run.status)) this.progressEvents.set(run.id, events);
+      }
       return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
     });
     return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));

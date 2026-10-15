@@ -72,8 +72,13 @@ export class Store {
     this.db.prepare('INSERT INTO events (run_id, ts, type, body) VALUES (?, ?, ?, ?)').run(e.runId ?? null, e.ts, e.type, JSON.stringify(e));
   }
 
-  events(runId: string): OrchestrateEvent[] {
-    const rows = this.db.prepare('SELECT body FROM events WHERE run_id = ? ORDER BY seq').all(runId) as { body: string }[];
+  /** A run's events in order; `types` limits them to those kinds (agent.log alone is most of the table). */
+  events(runId: string, types?: readonly OrchestrateEvent['type'][]): OrchestrateEvent[] {
+    const rows = (
+      types
+        ? this.db.prepare(`SELECT body FROM events WHERE run_id = ? AND type IN (${types.map(() => '?').join(', ')}) ORDER BY seq`).all(runId, ...types)
+        : this.db.prepare('SELECT body FROM events WHERE run_id = ? ORDER BY seq').all(runId)
+    ) as { body: string }[];
     return rows.map((r) => JSON.parse(r.body) as OrchestrateEvent);
   }
 
