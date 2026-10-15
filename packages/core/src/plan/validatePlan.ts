@@ -1,6 +1,7 @@
 import type { Plan } from '@orchestrate/shared';
 import type { Org } from '../org/org.ts';
 import { globWithin, matcher, toRepoRelative } from '../scope/paths.ts';
+import { isShellSafePath } from '../gates/gates.ts';
 import { topoOrder } from './dag.ts';
 
 /**
@@ -51,6 +52,8 @@ export function validatePlan(plan: Plan, org: Org): string[] {
       const inSquadDirs = squad.testDirs.length ? matcher(squad.testDirs) : () => true;
       for (const f of t.testFiles) {
         if (/[*?[\]{}]/.test(f)) problems.push(`${where}: test file "${f}" must be an exact path, not a glob.`);
+        // test files go into the test command line, so nothing a shell would interpret
+        else if (!isShellSafePath(f)) problems.push(`${where}: test file "${f}" may only use letters, digits and _ @ . / - (no spaces, "..", or leading "-").`);
         else if (!looksLikeTest(f) || !inSquadDirs(f)) {
           problems.push(`${where}: "${f}" is not a test path for squad "${squad.id}" (must match ${testGlobs.join(' or ')} under ${squad.testDirs.join(', ') || 'any directory'}).`);
         }
