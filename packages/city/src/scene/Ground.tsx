@@ -6,9 +6,14 @@ import { PALETTE } from '../palette.ts';
 import { districtPlazaRadius, PATH_WIDTH, type ParkLayout } from './park/parkLayout.ts';
 import { WAVE, WAVE_GLSL } from './park/wave.ts';
 
+/** One texture per repeat value, shared by every paved surface for the life of the page (a handful in all). */
+const paving = new Map<number, THREE.CanvasTexture>();
+
 /** Large stone pavers for plazas, as a repeating texture. */
 export function usePavingTexture(repeat: number): THREE.CanvasTexture {
   return useMemo(() => {
+    const cached = paving.get(repeat);
+    if (cached) return cached;
     const size = 256;
     const c = document.createElement('canvas');
     c.width = c.height = size;
@@ -28,6 +33,7 @@ export function usePavingTexture(repeat: number): THREE.CanvasTexture {
     tex.repeat.set(repeat, repeat);
     tex.anisotropy = 8;
     tex.colorSpace = THREE.SRGBColorSpace;
+    paving.set(repeat, tex);
     return tex;
   }, [repeat]);
 }

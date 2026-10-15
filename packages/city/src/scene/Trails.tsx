@@ -1,12 +1,14 @@
 import { Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { CityLayout } from '../layout.ts';
 import { PALETTE } from '../palette.ts';
-import { useCity, type Trail } from '../store.ts';
+import { TRAIL_LIFE_MS, useCity, type Trail } from '../store.ts';
 
 const TRAVEL = 2.0;
+/** Scratch position for the comet heads (copied out at once, so one is enough for all trails). */
+const HEAD = new THREE.Vector3();
 const LINGER = 2.5;
 const REASON_COLOR: Record<string, string> = {
   'acceptance tests are red': PALETTE.ceruleanBright,
@@ -41,7 +43,7 @@ function Comet({ trail, layout }: { trail: Trail; layout: CityLayout }) {
     const t = Math.min(age / TRAVEL, 1);
     const eased = 1 - Math.pow(1 - t, 3);
     const idx = eased * (points.length - 1);
-    const p = points[Math.floor(idx)]!.clone().lerp(points[Math.min(Math.ceil(idx), points.length - 1)]!, idx % 1);
+    const p = HEAD.copy(points[Math.floor(idx)]!).lerp(points[Math.min(Math.ceil(idx), points.length - 1)]!, idx % 1);
     head.current.position.copy(p);
     halo.current?.position.copy(p);
     head.current.visible = t < 1;
@@ -70,6 +72,20 @@ function Comet({ trail, layout }: { trail: Trail; layout: CityLayout }) {
 
 export function Trails({ layout }: { layout: CityLayout }) {
   const trails = useCity((s) => s.trails);
+  const any = trails.length > 0;
+  // Trails used to be dropped only when the next handoff arrived, so the last burst stayed mounted
+  // (drawing, and running useFrame) indefinitely. Prune expired ones while any exist.
+  useEffect(() => {
+    if (!any) return;
+    const id = setInterval(() => {
+      const now = performance.now();
+      useCity.setState((s) => {
+        const kept = s.trails.filter((t) => now - t.at < TRAIL_LIFE_MS);
+        return kept.length === s.trails.length ? s : { trails: kept };
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [any]);
   return (
     <>
       {trails.map((t) => (

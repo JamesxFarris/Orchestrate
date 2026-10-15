@@ -3,6 +3,7 @@ import { roleName, type OrchestrateEvent, type RunState } from '@orchestrate/sha
 import { api } from '../api.ts';
 import { CollapsiblePanel } from './CollapsiblePanel.tsx';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity, useCurrentRun } from '../store.ts';
+import { PALETTE } from '../palette.ts';
 import { RoleIcon } from './roleIcons.tsx';
 import { useDialog } from './useDialog.ts';
 
@@ -407,7 +408,6 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
-const ACTIVITY_COLOR_MERGED = '#7bc950';
 const ROLE_KEY: [string, string][] = [
   ['master', 'VP of Engineering'],
   ['architect', 'Principal Architect'],
@@ -429,7 +429,7 @@ export function Legend() {
           </span>
         ))}
         <span>
-          <i style={{ background: ACTIVITY_COLOR_MERGED }} />
+          <i style={{ background: PALETTE.green }} />
           Merged
         </span>
       </div>

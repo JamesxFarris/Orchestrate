@@ -78,7 +78,8 @@ const STAGE: Record<TaskStatus, Stage> = {
   skipped: 'skipped',
 };
 
-const LABEL: Record<TaskStatus, string> = {
+/** Words for each task state, everywhere in the city (board, tree tooltips, agent panel). */
+export const TASK_LABEL: Record<TaskStatus, string> = {
   pending: 'queued',
   red: 'writing tests',
   in_progress: 'building',
@@ -179,7 +180,7 @@ export function buildBoard(run: RunState, agents: Record<string, AgentSnapshot>,
       kind: c.kind,
       squad: { id: c.squad, name: squad?.name ?? c.squad, color: squad?.color ?? '#8b7d66' },
       status: task.status,
-      statusLabel: waitingOnLead && task.status !== 'escalated' && task.status !== 'failed' ? 'waiting on lead' : LABEL[task.status],
+      statusLabel: waitingOnLead && task.status !== 'escalated' && task.status !== 'failed' ? 'waiting on lead' : TASK_LABEL[task.status],
       stage: STAGE[task.status],
       tone,
       phase: tone === 'stuck' ? 'stuck' : PHASE[task.status],

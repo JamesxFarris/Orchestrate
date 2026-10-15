@@ -19,8 +19,10 @@ export function Scenery({ park }: { park: ParkLayout }) {
   const gl = useThree((s) => s.gl);
   const canopy = useMemo(() => foliageMaterial(), []);
   const hedge = useMemo(() => foliageMaterial(), []);
-  const broadList = park.trees.filter((t) => t.variant === 0);
-  const conList = park.trees.filter((t) => t.variant === 1);
+  // memoised: as fresh arrays they re-ran the layout effect (~190 matrices and a shadow re-bake) every render
+  const broadList = useMemo(() => park.trees.filter((t) => t.variant === 0), [park]);
+  const conList = useMemo(() => park.trees.filter((t) => t.variant === 1), [park]);
+  useEffect(() => () => (canopy.dispose(), hedge.dispose()), [canopy, hedge]);
 
   useLayoutEffect(() => {
     const m = new THREE.Matrix4();
@@ -88,6 +90,11 @@ function TaskTree({ task, at }: { task: TaskState; at: THREE.Vector2 }) {
   const selected = useCity((s) => s.selectedTask === task.contract.id);
   const highlighted = useCity((s) => s.highlightTask === task.contract.id);
   const [hover, setHover] = useState(false);
+  // unmounting while hovered never fires pointer-out: put the cursor back
+  useEffect(() => {
+    if (!hover) return;
+    return () => void (document.body.style.cursor = '');
+  }, [hover]);
   const group = useRef<THREE.Group>(null);
   const ring = useRef<THREE.MeshBasicMaterial>(null);
   const canopy = useMemo(() => foliageMaterial(PALETTE.canopy[1]), []);

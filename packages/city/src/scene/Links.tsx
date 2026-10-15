@@ -2,6 +2,7 @@ import { Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import type { AgentActivity } from '@orchestrate/shared';
 import type { CityLayout, Placement } from '../layout.ts';
 import { ACTIVITY_COLOR, useCity, type TeamRole } from '../store.ts';
 
@@ -54,23 +55,40 @@ function FlowLine({ points, color }: { points: THREE.Vector3[]; color: string })
   );
 }
 
+const NO_ROLES: TeamRole[] = [];
+
 export function Links({ layout }: { layout: CityLayout }) {
-  const agents = useCity((s) => s.agents);
-  const roles = useCity((s) => s.team?.roles ?? []);
+  // Only who is active, and how, decides the lines. Selecting all of `agents` re-rendered on every
+  // progress and cost event, and each re-render rebuilt every line's geometry.
+  const active = useCity((s) =>
+    Object.values(s.agents)
+      .filter((a) => a.activity !== 'idle')
+      .map((a) => `${a.agentId}:${a.activity}`)
+      .sort()
+      .join('|'),
+  );
+  // a module-level empty list: `?? []` would be a new array on every call, which re-renders forever
+  const roles = useCity((s) => s.team?.roles ?? NO_ROLES);
+  const arcs = useRef({ layout, byKey: new Map<string, THREE.Vector3[]>() });
 
   const links = useMemo(() => {
+    // arcs are cached per pair; a new layout moves the buildings, so start over
+    if (arcs.current.layout !== layout) arcs.current = { layout, byKey: new Map() };
     const out: { key: string; points: THREE.Vector3[]; color: string }[] = [];
-    for (const a of Object.values(agents)) {
-      if (a.activity === 'idle') continue;
-      const role = roles.find((r) => r.id === a.agentId);
+    for (const entry of active ? active.split('|') : []) {
+      const [agentId, activity] = entry.split(':') as [string, AgentActivity];
+      const role = roles.find((r) => r.id === agentId);
       const partner = role && partnerOf(role, roles);
-      const from = layout.byId.get(a.agentId);
+      const from = layout.byId.get(agentId);
       const to = partner && layout.byId.get(partner.id);
       if (!from || !to) continue;
-      out.push({ key: `${a.agentId}->${partner.id}`, points: arc(from, to), color: ACTIVITY_COLOR[a.activity] });
+      const key = `${agentId}->${partner.id}`;
+      let points = arcs.current.byKey.get(key);
+      if (!points) arcs.current.byKey.set(key, (points = arc(from, to)));
+      out.push({ key, points, color: ACTIVITY_COLOR[activity] });
     }
     return out;
-  }, [agents, roles, layout]);
+  }, [active, roles, layout]);
 
   return (
     <>
