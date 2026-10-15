@@ -1,3 +1,4 @@
+import path from 'node:path';
 import picomatch from 'picomatch';
 import { matcher, pathWithin, toRepoRelative, type PathMatcher } from './paths.ts';
 
@@ -49,7 +50,11 @@ export function createScopeGuard(config: ScopeGuardConfig): ScopeGuard {
   })();
 
   const roots = searchRoots([...config.read, ...config.write, ...config.protected]);
-  const inExternal = (raw: string) => (config.externalRead ?? []).some((dir) => toRepoRelative(dir, raw) !== null);
+  // resolve against the root first, as the tool will: a relative path means relative to the agent's cwd
+  const inExternal = (raw: string) => {
+    const abs = path.resolve(config.root, raw.replace(/\\/g, '/'));
+    return (config.externalRead ?? []).some((dir) => toRepoRelative(dir, abs) !== null);
+  };
   const writeHint = config.write.length ? config.write.join(', ') : '(nothing — you are read-only)';
   const escalate = `If the task genuinely requires this, call ${orchTool('request_scope_change')} with the paths and your reason, then stop working.`;
 

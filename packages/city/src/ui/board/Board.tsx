@@ -79,6 +79,10 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
   const highlight = useCity((s) => s.highlight);
   const selectTask = useCity((s) => s.selectTask);
   const open = () => selectTask(tile.taskId);
+  // a tile that disappears while hovered (the board collapsing) never gets mouse-leave
+  useEffect(() => () => {
+    if (useCity.getState().highlightTask === tile.taskId) useCity.getState().highlight(undefined);
+  }, [tile.taskId]);
   const events = { onMouseEnter: () => highlight(tile.taskId), onMouseLeave: () => highlight(undefined), onFocus: () => highlight(tile.taskId), onBlur: () => highlight(undefined) };
   const style = { ['--squad' as string]: tile.squad.color };
 
@@ -171,6 +175,7 @@ function Tile({ tile, now }: { tile: BoardTile; now: number }) {
  */
 function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
   const [step, setStep] = useState<'idle' | 'confirm' | 'mark' | 'busy'>('idle');
+  const [doing, setDoing] = useState<'ship' | 'mark'>('ship');
   const [error, setError] = useState<{ message: string; output?: string }>();
 
   if (ship.state === 'none') return null;
@@ -202,6 +207,7 @@ function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
   const partial = unfinished.length > 0;
 
   const act = async (what: 'ship' | 'mark') => {
+    setDoing(what);
     setStep('busy');
     setError(undefined);
     try {
@@ -237,7 +243,7 @@ function ShipBar({ run, ship }: { run: RunState; ship: ShipStatus }) {
       {step === 'mark' && <span className="shipbar__explain">Only if this work is already in your main branch, for example from a squash merge. This records it as shipped without merging anything.</span>}
       {step === 'busy' ? (
         <span className="shipbar__busy" role="status">
-          Shipping: merging and checking…
+          {doing === 'ship' ? 'Shipping: merging and checking…' : 'Recording it as shipped…'}
         </span>
       ) : (
         <span className="shipbar__actions">

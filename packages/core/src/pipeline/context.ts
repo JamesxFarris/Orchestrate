@@ -133,7 +133,11 @@ export class RunContext {
     this.persist();
   }
 
+  /** Agents this run has put to work, so finishing it idles only them, not another run's. */
+  readonly busyAgents = new Set<string>();
+
   activity(agentId: string, activity: AgentActivity, task?: TaskState, summary?: string): void {
+    if (activity !== 'idle') this.busyAgents.add(agentId);
     this.bus.emit({
       type: 'agent.activity',
       runId: this.run.id,

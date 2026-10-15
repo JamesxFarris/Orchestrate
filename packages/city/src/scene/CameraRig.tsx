@@ -15,6 +15,13 @@ export const CAMERA_LIMITS = {
 };
 
 const UP = new THREE.Vector3(0, 1, 0);
+// scratch objects for the per-frame update (one camera, so module-level is safe): no garbage at 60fps
+const offset = new THREE.Vector3();
+const forward = new THREE.Vector3();
+const right = new THREE.Vector3();
+const move = new THREE.Vector3();
+const goalOffset = new THREE.Vector3();
+const flat = new THREE.Vector2();
 
 /**
  * City-builder camera: glides to presets or a double-clicked tower (and gives control straight
@@ -81,13 +88,13 @@ export function CameraRig() {
   useFrame((_, dt) => {
     if (!controls) return;
     const k = keys.current;
-    const offset = camera.position.clone().sub(controls.target);
+    offset.copy(camera.position).sub(controls.target);
 
     if (k.size) {
       const dist = offset.length();
-      const forward = new THREE.Vector3(-offset.x, 0, -offset.z).normalize();
-      const right = new THREE.Vector3().crossVectors(forward, UP);
-      const move = new THREE.Vector3();
+      forward.set(-offset.x, 0, -offset.z).normalize();
+      right.crossVectors(forward, UP);
+      move.set(0, 0, 0);
       if (k.has('KeyW') || k.has('ArrowUp')) move.add(forward);
       if (k.has('KeyS') || k.has('ArrowDown')) move.sub(forward);
       if (k.has('KeyD') || k.has('ArrowRight')) move.add(right);
@@ -106,12 +113,13 @@ export function CameraRig() {
     if (g) {
       const s = 1 - Math.exp(-dt * 3.5);
       controls.target.lerp(g.target, s);
-      offset.lerp(g.pos.clone().sub(g.target), s);
-      if (controls.target.distanceTo(g.target) < 0.05 && offset.distanceTo(g.pos.clone().sub(g.target)) < 0.2) goal.current = null;
+      goalOffset.copy(g.pos).sub(g.target);
+      offset.lerp(goalOffset, s);
+      if (controls.target.distanceTo(g.target) < 0.05 && offset.distanceTo(goalOffset) < 0.2) goal.current = null;
     }
 
     // keep the view over the island
-    const flat = new THREE.Vector2(controls.target.x, controls.target.z);
+    flat.set(controls.target.x, controls.target.z);
     const maxR = PLATFORM_RADIUS - 15;
     if (flat.length() > maxR) {
       flat.setLength(maxR);

@@ -76,6 +76,8 @@ const auraFragment = /* glsl */ `
 
 useGLTF.preload(MODEL_URL, false, true);
 
+const VERMILION = new THREE.Color(PALETTE.vermilion);
+
 export function Building({ p }: { p: Placement }) {
   const agent = useCity((s) => s.agents[p.role.id]);
   const selected = useCity((s) => s.selectedAgent === p.role.id);
@@ -83,6 +85,11 @@ export function Building({ p }: { p: Placement }) {
   const select = useCity((s) => s.select);
   const camera = useCity((s) => s.camera);
   const [hover, setHover] = useState(false);
+  // unmounting while hovered never fires pointer-out: put the cursor back
+  useEffect(() => {
+    if (!hover) return;
+    return () => void (document.body.style.cursor = '');
+  }, [hover]);
   const { scene } = useGLTF(MODEL_URL, false, true);
 
   const activity = agent?.activity ?? 'idle';
@@ -173,7 +180,8 @@ export function Building({ p }: { p: Placement }) {
     if (groundGlow.current) groundGlow.current.opacity = energy * 0.55;
     if (beacon.current) {
       const blink = Math.sin(t * 2.2 + seedOf(p.role.id)) > 0.6 ? 1 : 0.25;
-      beacon.current.color.set(active ? ACTIVITY_COLOR[activity] : PALETTE.vermilion).multiplyScalar(active ? 4 : 2.2 * blink);
+      // copy from Colors already parsed: Color.set(string) parsed a hex string every frame, per building
+      beacon.current.color.copy(active ? activeColor : VERMILION).multiplyScalar(active ? 4 : 2.2 * blink);
     }
   });
 

@@ -36,6 +36,9 @@ export interface CameraCmd {
   seq: number;
 }
 
+/** How long a handoff trail is drawn (comet travel plus fade, with room to spare). */
+export const TRAIL_LIFE_MS = 6000;
+
 export interface Trail {
   id: number;
   from: string;
@@ -75,7 +78,6 @@ interface CityState {
   selectTask(taskId?: string): void;
   camera(cmd: Omit<CameraCmd, 'seq'>): void;
   highlight(taskId?: string): void;
-  upsertRun(r: RunState): void;
 }
 
 let trailSeq = 0;
@@ -113,7 +115,6 @@ export const useCity = create<CityState>((set, get) => ({
       return { agents: byId, runs: runMap, currentRunId: runs[0]?.id, circleActive: runs[0]?.status === 'reviewing' };
     }),
 
-  upsertRun: (r) => set((s) => ({ runs: { ...s.runs, [r.id]: r } })),
 
   select: (selectedAgent) => set({ selectedAgent, selectedTask: undefined }),
   selectTask: (selectedTask) => set({ selectedTask, selectedAgent: undefined }),
@@ -179,7 +180,7 @@ export const useCity = create<CityState>((set, get) => ({
       }
       case 'handoff': {
         const now = performance.now();
-        const trails = s.trails.filter((t) => now - t.at < 6000);
+        const trails = s.trails.filter((t) => now - t.at < TRAIL_LIFE_MS);
         trails.push({ id: ++trailSeq, from: e.from, to: e.to, reason: e.reason, at: now });
         next.trails = trails;
         if (e.reason === 'merged') {
@@ -206,14 +207,4 @@ export const ACTIVITY_LABEL: Record<AgentActivity, string> = {
 };
 
 
-export const TASK_LABEL: Record<TaskStatus, string> = {
-  pending: 'pending',
-  red: 'writing tests',
-  in_progress: 'building',
-  verifying: 'verifying',
-  review: 'in review',
-  merged: 'merged',
-  escalated: 'escalated',
-  failed: 'failed',
-  skipped: 'skipped',
-};
+export { TASK_LABEL } from './ui/board/buildBoard.ts';
