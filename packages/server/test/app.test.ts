@@ -54,6 +54,7 @@ describe('daemon API (demo backend)', () => {
     expect((await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: '' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'POST', url: '/api/runs/nope/approve' })).statusCode).toBe(409);
     expect((await app.inject({ url: '/api/runs/nope' })).statusCode).toBe(404);
+    expect((await app.inject({ url: '/api/runs/nope/events' })).statusCode).toBe(404);
   });
 
   it('refuses browsers on foreign origins', async () => {
@@ -95,6 +96,18 @@ describe('daemon API (demo backend)', () => {
       expect(res.statusCode, url).toBe(403);
     }
     expect((await app.inject({ url: '/api/health', headers: { host: '127.0.0.1:4317' } })).statusCode).toBe(200);
+  });
+
+  it('demo mode refuses what live mode refuses: approving a cancelled run, cancelling a finished one', async () => {
+    const { app } = await setup();
+    const a = (await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a basic wave spawner' } })).json<RunState>().id;
+    await until(async () => (await app.inject({ url: `/api/runs/${a}` })).json<RunState>().status === 'awaiting_approval');
+    expect((await app.inject({ method: 'POST', url: `/api/runs/${a}/cancel` })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/runs/${a}/approve` })).statusCode).toBe(409);
+
+    const b = (await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a basic wave spawner', autoApprove: true } })).json<RunState>().id;
+    await until(async () => (await app.inject({ url: `/api/runs/${b}` })).json<RunState>().status === 'completed', 20_000);
+    expect((await app.inject({ method: 'POST', url: `/api/runs/${b}/cancel` })).statusCode).toBe(409);
   });
 
   it('validates the ship body', async () => {

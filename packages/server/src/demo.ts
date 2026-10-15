@@ -5,8 +5,10 @@ import type { Backend } from './backend.ts';
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => (clearTimeout(t), reject(new Error('cancelled'))), { once: true });
+    const onAbort = () => (clearTimeout(t), reject(new Error('cancelled')));
+    // remove the listener when the timer fires, or every wait of a run leaves one on its signal
+    const t = setTimeout(() => (signal.removeEventListener('abort', onAbort), resolve()), ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 
 const DEV_LINES = [
@@ -62,11 +64,17 @@ export class DemoBackend implements Backend {
     const c = new AbortController();
     this.controllers.set(id, c);
     this.emit({ type: 'run.created', runId: id, prompt });
-    void this.simulate(run, c.signal, !!opts.autoApprove).catch(() => {
-      for (const r of this.org.roles) this.emit({ type: 'agent.activity', runId: id, agentId: r.id, activity: 'idle' });
-      run.status = 'cancelled';
-      this.emit({ type: 'run.status', runId: id, status: 'cancelled' });
-    });
+    void this.simulate(run, c.signal, !!opts.autoApprove)
+      .catch(() => {
+        for (const r of this.org.roles) this.emit({ type: 'agent.activity', runId: id, agentId: r.id, activity: 'idle' });
+        run.status = 'cancelled';
+        this.emit({ type: 'run.status', runId: id, status: 'cancelled' });
+      })
+      // like the live orchestrator: a finished run can no longer be cancelled or approved
+      .finally(() => {
+        this.controllers.delete(id);
+        this.approvals.delete(id);
+      });
     return run;
   }
 
@@ -81,6 +89,7 @@ export class DemoBackend implements Backend {
     const c = this.controllers.get(runId);
     if (!c || c.signal.aborted) return false;
     c.abort();
+    this.approvals.delete(runId);
     return true;
   }
 

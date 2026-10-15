@@ -87,7 +87,9 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
     return run ?? reply.code(404).send({ error: 'not found' });
   });
 
-  app.get<{ Params: { id: string } }>('/api/runs/:id/events', async (req) => backend.events(req.params.id));
+  app.get<{ Params: { id: string } }>('/api/runs/:id/events', async (req, reply) =>
+    backend.get(req.params.id) ? backend.events(req.params.id) : reply.code(404).send({ error: 'not found' }),
+  );
 
   app.post('/api/runs', async (req, reply) => {
     const body = SubmitBody.safeParse(req.body);
