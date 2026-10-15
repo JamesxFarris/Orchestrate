@@ -4,3 +4,7 @@ dist/
 *.log
 .env
 .claude/worktrees/
+Models/*.zip
+Models/*.rar
+Models/_extracted/
+Models/kenney*/

@@ -1,17 +1,10 @@
 import * as THREE from 'three';
-import { PLATFORM_RADIUS, type CityLayout, type Placement } from '../../layout.ts';
+import { districtPlazaRadius, PLATFORM_RADIUS, type CityLayout, type Placement } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
+import { rng } from '../rng.ts';
+import { inSettlement } from '../settlement/settlementLayout.ts';
 
-export function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { rng };
 
 export interface DecorTree {
   x: number;
@@ -27,8 +20,6 @@ export interface ParkLayout {
   paths: Map<string, THREE.Vector2[]>;
   /** Where this run's task trees grow, per squad (ring just outside the district plaza). */
   taskSlots: Map<string, THREE.Vector2[]>;
-  /** Where past runs leave landmark trees, per squad (outer band, capped). */
-  landmarkSlots: Map<string, THREE.Vector2[]>;
   trees: DecorTree[];
   shrubs: { x: number; z: number; scale: number }[];
   /** Ground route between two agents' towers, following the footpaths. */
@@ -36,10 +27,9 @@ export interface ParkLayout {
 }
 
 export const PATH_WIDTH = 3.2;
-export const LANDMARK_CAP = 12;
 const TASK_SLOTS = 18;
 
-export const districtPlazaRadius = (size: number) => size + 3;
+export { districtPlazaRadius };
 
 function distToPolyline(p: THREE.Vector2, line: THREE.Vector2[]): number {
   let best = Infinity;
@@ -70,7 +60,6 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
   const rand = rng(1337);
   const paths = new Map<string, THREE.Vector2[]>();
   const taskSlots = new Map<string, THREE.Vector2[]>();
-  const landmarkSlots = new Map<string, THREE.Vector2[]>();
 
   for (const d of city.districts) {
     const dir = new THREE.Vector2(Math.cos(d.angle), Math.sin(d.angle));
@@ -96,24 +85,17 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
       slots.push(new THREE.Vector2(d.x + Math.cos(a) * r, d.z + Math.sin(a) * r));
     }
     taskSlots.set(d.squad.id, slots);
-
-    // landmarks: an irregular outer grove
-    const marks: THREE.Vector2[] = [];
-    for (let i = 0; i < LANDMARK_CAP; i++) {
-      const a = d.angle + THREE.MathUtils.degToRad(-95 + (i * 190) / (LANDMARK_CAP - 1) + (rand() - 0.5) * 8);
-      const r = ring + 13 + rand() * 5;
-      marks.push(new THREE.Vector2(d.x + Math.cos(a) * r, d.z + Math.sin(a) * r));
-    }
-    landmarkSlots.set(d.squad.id, marks);
   }
 
-  const reserved = [...taskSlots.values(), ...landmarkSlots.values()].flat();
+  const reserved = [...taskSlots.values()].flat();
   const allPaths = [...paths.values()];
   const free = (p: THREE.Vector2, clearance: number) => {
     if (p.length() < city.plazaRadius + 3) return false;
     for (const d of city.districts) if (p.distanceTo(new THREE.Vector2(d.x, d.z)) < districtPlazaRadius(d.size) + 2) return false;
     for (const line of allPaths) if (distToPolyline(p, line) < PATH_WIDTH / 2 + clearance) return false;
     for (const s of reserved) if (p.distanceTo(s) < 4) return false;
+    // the far side of each district plaza is its settlement (see settlement/settlementLayout.ts)
+    if (inSettlement(city.districts, p.x, p.y)) return false;
     return true;
   };
 
@@ -167,5 +149,5 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
     return resample(pts, 0.8).map((p) => new THREE.Vector3(p.x, 0, p.y));
   };
 
-  return { paths, taskSlots, landmarkSlots, trees, shrubs, route };
+  return { paths, taskSlots, trees, shrubs, route };
 }

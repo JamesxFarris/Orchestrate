@@ -7,7 +7,7 @@ import { districtPlazaRadius, PATH_WIDTH, type ParkLayout } from './park/parkLay
 import { WAVE, WAVE_GLSL } from './park/wave.ts';
 
 /** Large stone pavers for plazas, as a repeating texture. */
-function usePavingTexture(repeat: number): THREE.CanvasTexture {
+export function usePavingTexture(repeat: number): THREE.CanvasTexture {
   return useMemo(() => {
     const size = 256;
     const c = document.createElement('canvas');
