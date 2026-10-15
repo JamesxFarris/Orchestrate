@@ -239,3 +239,18 @@ describe('gate commands run without credentials', () => {
     expect(r).toMatchObject({ ok: false, output: 'cancelled before it started' });
   });
 });
+
+describe('gate output: the start and the end of a long log', () => {
+  it('keeps short output whole', async () => {
+    const r = await runCommand(`node -e "console.log('only line')"`, process.cwd(), 20_000);
+    expect(r.output.trim()).toBe('only line');
+  });
+  it('keeps the first error and the final summary of a long one', async () => {
+    const script = "console.log('FIRST: SyntaxError in setup'); for (let i = 0; i < 2000; i++) console.log('noise line ' + i); console.log('LAST: 3 failed')";
+    const r = await runCommand(`node -e "${script}"`, process.cwd(), 20_000);
+    expect(r.output).toContain('FIRST: SyntaxError in setup');
+    expect(r.output).toContain('LAST: 3 failed');
+    expect(r.output).toMatch(/characters omitted/);
+    expect(r.output.length).toBeLessThan(8_200);
+  });
+});

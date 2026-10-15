@@ -20,6 +20,8 @@ export interface AgentInvocation {
   guard: ScopeGuardConfig;
   /** JSON schema the final answer must satisfy (structured output). */
   outputSchema?: Record<string, unknown>;
+  /** The agent must end with submit_work or raise_blocker (QA, implementers); it gets one nudge if it tries to stop without. */
+  requireSubmit?: boolean;
   signal?: AbortSignal;
   onSignal: (s: AgentSignal) => void;
 }
@@ -44,6 +46,8 @@ export interface AgentResult {
   scopeRequest?: { paths: string[]; reason: string };
   blocker?: string;
   error?: string;
+  /** The tools the session started with (from the CLI's init message), to check what the agent could reach. */
+  initTools?: string[];
 }
 
 export interface AgentRunner {

@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { CodeReview, EscalationDecision, type RoleConfig, type TaskState } from '@orchestrate/shared';
+import { CodeReview, EscalationDecision, type RoleConfig, type TaskResult, type TaskState } from '@orchestrate/shared';
 import { auditChanges, runCommand, testFilesCommand, type CommandResult } from '../gates/gates.ts';
+import { buildTaskBrief } from './brief.ts';
 import * as g from '../git/git.ts';
 import {
   implementerPrompt,
@@ -68,26 +69,31 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
 
     // ---------------------------------------------------------------- GREEN: implement until gates + lead pass
     const writeScope = [...c.writeScope];
-    const commands = c.kind === 'code' ? [testFilesCommand(gates, c.testFiles), gates.typecheck].filter((x): x is string => !!x) : [];
+    // what the implementer may run to check its own work before submitting: its tests, typecheck, lint
+    const commands = c.kind === 'code' ? [testFilesCommand(gates, c.testFiles), gates.typecheck, gates.lint].filter((x): x is string => !!x) : [];
     let feedback: string[] = [];
     let escalations = 0;
     let approved = false;
+    let delivered: Omit<TaskResult, 'files'> = {};
 
     for (let attempt = 0; attempt <= org.policy.maxRetries && !approved; attempt++) {
       ctx.setTaskStatus(task, 'in_progress', attempt ? `attempt ${attempt + 1}` : undefined);
       task.attempts++;
 
+      const read = [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS];
+      const brief = buildTaskBrief(ctx.run, task, read);
       const res = await ctx.callAgent({
         role: implementer,
         activity: 'working',
         task,
         cwd: wt.dir,
-        system: implementerSystem(org, implementer, c, writeScope, commands, maxLines),
+        system: withBrief(implementerSystem(org, implementer, c, writeScope, commands, maxLines), brief),
         prompt: implementerPrompt(feedback),
         tools: BUILD_TOOLS,
+        requireSubmit: true,
         guard: {
           write: writeScope,
-          read: [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS],
+          read,
           protected: c.testFiles,
           bash: [...commands.map(commandPattern), ...GIT_READONLY],
         },
@@ -134,6 +140,13 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         continue;
       }
 
+      if (res.outcome === 'completed') {
+        // ended without submit_work even after the reminder: unfinished by its own account. The
+        // changes stay in the worktree for the next attempt to check and submit.
+        feedback = ['You ended your session without calling submit_work, so the work was not checked. Your changes are still in place: verify them with the allowed commands, then call submit_work (or raise_blocker if you are stuck).'];
+        continue;
+      }
+
       if (res.outcome === 'budget' || res.outcome === 'error') {
         feedback = [`Your previous session ended early (${res.error ?? res.outcome}). Be more direct: implement, verify once, submit.`];
         continue;
@@ -160,7 +173,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       // -------------------------------------------------------------- gates
       ctx.setTaskStatus(task, 'verifying');
       ctx.activity(implementer.id, 'testing', task, `Running gates: ${c.title}`);
-      const failures: string[] = [];
+      const failures: { label: string; output: string }[] = [];
       const gateNotes: string[] = [`audit: ${changed.length} files, ${lines} lines, in scope`];
       const steps: [name: 'typecheck' | 'lint' | 'test', cmd: string | undefined][] =
         c.kind === 'code'
@@ -172,11 +185,13 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         ctx.throwIfCancelled();
         ctx.gate(task, name, r.ok, r.output);
         gateNotes.push(`${name}: ${r.ok ? 'pass' : 'FAIL'}`);
-        if (!r.ok) failures.push(`${name} failed (\`${cmd}\`):\n${r.output.slice(-3000)}`);
+        if (!r.ok) failures.push({ label: `${name} failed (\`${cmd}\`)`, output: r.output });
       }
       ctx.activity(implementer.id, 'idle');
       if (failures.length) {
-        feedback = failures;
+        // ~4000 characters shared between the failures, each keeping its start (the first error) and its end (the summary)
+        const budget = Math.floor(4000 / failures.length);
+        feedback = [attemptNote(attempt, changed, res.submitSummary), ...failures.map((f) => `${f.label}:\n${clipMiddle(f.output, budget)}`)];
         continue;
       }
 
@@ -210,10 +225,11 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       ctx.bus.emit({ type: 'code.review', runId: ctx.run.id, taskId: c.id, roleId: lead.id, review: review.value });
       if (review.value.verdict === 'approve') {
         approved = true;
+        delivered = { summary: res.submitSummary, reviewNotes: review.value.notes };
         break;
       }
       ctx.handoff(task, lead.id, implementer.id, 'changes requested');
-      feedback = reviewToFeedback(review.value);
+      feedback = [attemptNote(attempt, changed, res.submitSummary), ...reviewToFeedback(review.value)];
     }
 
     if (!approved) return escalate(`not accepted after ${org.policy.maxRetries + 1} attempts. Last feedback:\n${feedback.join('\n')}`);
@@ -234,6 +250,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       return 'failed';
     }
     ctx.handoff(task, lead.id, org.master().id, 'merged');
+    task.result = { ...delivered, files: await g.changedFiles(wt.dir, base) };
     ctx.setTaskStatus(task, 'merged');
     return 'merged';
   } finally {
@@ -261,14 +278,21 @@ async function redPhase(
       activity: 'testing',
       task,
       cwd: dir,
-      system: qaSystem(org, qa, c, cmd),
+      system: withBrief(qaSystem(org, qa, c, cmd), buildTaskBrief(ctx.run, task, ['**'])),
       prompt: feedback.length ? `Your previous tests were rejected. Fix:\n- ${feedback.join('\n- ')}` : 'Write the failing acceptance tests for this contract.',
       tools: BUILD_TOOLS,
+      requireSubmit: true,
       guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), ...GIT_READONLY] },
       headline: `Writing acceptance tests: ${c.title}`,
     });
     if (res.outcome === 'blocked' || res.outcome === 'scope_change') {
       return { ok: false, detail: `QA could not write tests: ${res.blocker ?? res.scopeRequest?.reason}` };
+    }
+    if (res.outcome === 'completed') {
+      // ended without submit_work even after the reminder; the files stay for the next attempt
+      ctx.gate(task, 'audit', false, 'QA ended without submit_work');
+      feedback = ['You ended your session without calling submit_work. Finish the tests, run them once to see them fail, then call submit_work.'];
+      continue;
     }
     // A session cut short leaves half-written tests, which would fail for the wrong reason and pass as red.
     if (res.outcome === 'budget' || res.outcome === 'error') {
@@ -317,3 +341,19 @@ export function redRejection(r: CommandResult, testFiles: readonly string[]): st
   }
   return undefined;
 }
+
+/** What the previous attempt did, by its own account, so a retry starts from it instead of from scratch. */
+function attemptNote(attempt: number, changed: readonly string[], summary: string | undefined): string {
+  const files = changed.length > 12 ? `${changed.slice(0, 12).join(', ')} and ${changed.length - 12} more` : changed.join(', ');
+  const said = summary ? `; your summary: "${summary.slice(0, 300)}"` : '';
+  return `PREVIOUS ATTEMPT ${attempt + 1}: you changed ${files || 'nothing'}${said}. Those changes are still in place; fix what follows.`;
+}
+
+/** The start and the end of `s` within `max` characters (about 30% head, 70% tail). */
+export function clipMiddle(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const head = Math.floor(max * 0.3);
+  return `${s.slice(0, head)}\n…\n${s.slice(-(max - head))}`;
+}
+
+const withBrief = (system: string, brief: string) => (brief ? `${system}\n\n${brief}` : system);

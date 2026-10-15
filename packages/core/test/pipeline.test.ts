@@ -246,6 +246,25 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     expect(planCalls[0]!.prompt).toContain('[Architect] rename the task');
   });
 
+  it('does not take work as submitted when the implementer ends without submit_work', async () => {
+    const env = setup(
+      team(sumPlan, {
+        implement: (ctx) => {
+          ctx.write('src/sum.js', sumImpl);
+          if (ctx.attempt > 1) ctx.submit('verified and done'); // the first time it just stops
+        },
+      }),
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+    const runner = (env.orch as unknown as { runner: FakeRunner }).runner;
+    const devCalls = runner.calls.filter((c) => c.agentId === 'core-dev');
+    expect(devCalls[1]!.prompt).toContain('without calling submit_work');
+    expect(devCalls.every((c) => c.requireSubmit)).toBe(true);
+    // gates never ran on the unsubmitted attempt
+    expect(env.events.filter((e) => e.type === 'gate.result' && e.gate === 'test')).toHaveLength(1);
+  });
+
   it('discards tests from a QA session that ran out of budget, and asks again', async () => {
     const env = setup(
       team(sumPlan, {

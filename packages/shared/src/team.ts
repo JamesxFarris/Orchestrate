@@ -102,6 +102,17 @@ export const ProjectConfig = z.strictObject({
   linkDirs: z.array(z.string()).default([]),
   /** Short description injected into every prompt. */
   description: z.string().default(''),
+  /**
+   * The project's guide for agents, injected into every role's prompt. Unset: AGENTS.md, else
+   * CLAUDE.md, if the repo has one. "" turns it off. Read from the run's base commit.
+   */
+  agentDoc: z.string().optional(),
+  /** Longest guide injected, in characters; the rest is left for agents to read. */
+  agentDocMaxChars: z.number().int().positive().default(6000),
+  /** Where architecture decision records live (the planner sees their titles and the next number). */
+  adrDir: z.string().default('docs/adr'),
+  /** Where design docs live. */
+  designDir: z.string().default('docs/design'),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfig>;
 

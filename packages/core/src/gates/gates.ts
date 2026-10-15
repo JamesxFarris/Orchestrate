@@ -11,8 +11,16 @@ export interface CommandResult {
 
 const MAX_OUTPUT = 8_000;
 
-function tail(s: string, n = MAX_OUTPUT): string {
-  return s.length > n ? `…${s.slice(-n)}` : s;
+/** Kept from the start of long output: compile and import errors come first, test summaries last. */
+const HEAD_OUTPUT = 2_000;
+
+/** The start and the end of a long output, with what was cut in between. */
+export function headAndTail(head: string, tail: string, total: number): string {
+  if (total <= MAX_OUTPUT) return tail; // short output is still whole in the tail buffer
+  const end = tail.slice(-(MAX_OUTPUT - HEAD_OUTPUT));
+  return `${head}
+… [${total - head.length - end.length} characters omitted] …
+${end}`;
 }
 
 /** Variables that look like credentials: provider keys, tokens, secrets, passwords. */
@@ -36,10 +44,15 @@ export function runCommand(command: string, cwd: string, timeoutMs: number, sign
   if (signal?.aborted) return Promise.resolve({ ok: false, code: null, output: 'cancelled before it started', timedOut: false });
   return new Promise((resolve) => {
     const child = spawn(command, { cwd, shell: true, windowsHide: true, env: gateEnv() });
+    let head = '';
     let out = '';
+    let total = 0;
     let timedOut = false;
     const onData = (b: Buffer) => {
-      out += b.toString();
+      const s = b.toString();
+      total += s.length;
+      if (head.length < HEAD_OUTPUT) head += s.slice(0, HEAD_OUTPUT - head.length);
+      out += s;
       if (out.length > MAX_OUTPUT * 4) out = out.slice(-MAX_OUTPUT * 2);
     };
     child.stdout.on('data', onData);
@@ -60,7 +73,7 @@ export function runCommand(command: string, cwd: string, timeoutMs: number, sign
     child.on('close', (code) => {
       clearTimeout(timer);
       signal?.removeEventListener('abort', kill);
-      resolve({ ok: code === 0 && !timedOut, code, output: tail(out), timedOut });
+      resolve({ ok: code === 0 && !timedOut, code, output: headAndTail(head, out, total), timedOut });
     });
   });
 }

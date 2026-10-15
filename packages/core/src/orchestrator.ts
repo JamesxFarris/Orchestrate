@@ -17,6 +17,8 @@ import {
   masterSummarySystem,
 } from './prompts.ts';
 import { outputSchema, parseStructured } from './runner/structured.ts';
+import { adrDigest, loadAgentDoc } from './context/projectContext.ts';
+import { recentRunMemory } from './context/memory.ts';
 import { computeProgress, finishedAt } from './progress/progress.ts';
 import { READ_TOOLS, type AgentRunner } from './runner/types.ts';
 import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
@@ -190,7 +192,7 @@ export class Orchestrator {
 
   submit(prompt: string, opts: SubmitOptions = {}): RunState {
     const id = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${randomBytes(3).toString('hex')}`;
-    const run: RunState = { id, prompt, status: 'planning', createdAt: Date.now(), tasks: [], costUsd: 0 };
+    const run: RunState = { id, prompt, status: 'planning', createdAt: Date.now(), tasks: [], costUsd: 0, repo: this.repoRoot };
     this.runs.set(id, run);
     const controller = new AbortController();
     this.controllers.set(id, controller);
@@ -310,8 +312,12 @@ export class Orchestrator {
       run,
       signal,
     );
+    const baseRef = opts.baseRef ?? this.org.project.defaultBranch;
     try {
-      const planned = await this.planWithCircle(ctx);
+      const p = this.org.project;
+      // what every agent reads first: the project's own guide, as committed at the run's base
+      ctx.guide = await loadAgentDoc(this.repoRoot, baseRef, p.agentDoc, p.agentDocMaxChars);
+      const planned = await this.planWithCircle(ctx, await this.plannerContext(run, baseRef));
       if (!planned.plan) {
         this.setStatus(run, 'failed', planned.reason);
         return run;
@@ -329,7 +335,7 @@ export class Orchestrator {
 
       ctx.throwIfCancelled();
       this.setStatus(run, 'executing');
-      await this.executeTasks(ctx, opts.baseRef ?? this.org.project.defaultBranch);
+      await this.executeTasks(ctx, baseRef);
       await this.summarise(ctx);
       const merged = run.tasks.filter((t) => t.status === 'merged').length;
       this.setStatus(run, merged > 0 ? 'completed' : 'failed', `${merged}/${run.tasks.length} tasks merged`);
@@ -349,12 +355,22 @@ export class Orchestrator {
     return run;
   }
 
+  /** What the planner gets beyond the request: the decision log, and memory of recent runs here. */
+  private async plannerContext(run: RunState, baseRef: string): Promise<string> {
+    const { adrDir } = this.org.project;
+    const adrs = await adrDigest(this.repoRoot, baseRef, adrDir);
+    const memory = recentRunMemory(this.store?.listRuns(50) ?? [], run);
+    const decisions = `DECISION RECORDS (${adrDir}, newest first; read the ones that bear on this request)\n${adrs.lines.join('\n') || '- (none yet)'}\nNext free ADR number: ${adrs.next}`;
+    const history = memory ? `RECENT RUNS ON THIS PROJECT (memory, newest first; verify against the code before relying on it)\n${memory}` : '';
+    return [decisions, history].filter(Boolean).join('\n\n');
+  }
+
   /**
    * Master drafts; deterministic validation and the Tech Circle push back; at most N revision rounds.
    * `needsHuman` says why a person must approve the plan even when the run is auto-approved: a
    * reviewer whose verdict could not be read, or concerns left after the last round.
    */
-  private async planWithCircle(ctx: RunContext): Promise<{ plan: Plan; needsHuman?: string } | { plan?: undefined; reason: string }> {
+  private async planWithCircle(ctx: RunContext, plannerContext = ''): Promise<{ plan: Plan; needsHuman?: string } | { plan?: undefined; reason: string }> {
     const { org, run } = ctx;
     const master = org.master();
     let previous: Plan | undefined;
@@ -368,7 +384,9 @@ export class Orchestrator {
         role: master,
         activity: 'working',
         cwd: this.repoRoot,
-        system: masterPlanningSystem(org),
+        system: plannerContext ? `${masterPlanningSystem(org)}
+
+${plannerContext}` : masterPlanningSystem(org),
         prompt: masterPlanningPrompt(run.prompt, previous ? { previous, feedback } : undefined),
         tools: READ_TOOLS,
         guard: READ_ONLY,
@@ -501,6 +519,7 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
         activity: 'working',
         cwd: this.repoRoot,
         system: masterSummarySystem(org),
+        withoutGuide: true,
         prompt: `REQUEST\n${run.prompt}\n\nPLAN SUMMARY\n${run.plan?.summary}\n\nOUTCOMES\n${outcomes}\n\nIntegration branch: ${run.integrationBranch}`,
         tools: [],
         guard: READ_ONLY,
@@ -513,6 +532,7 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
       if (err instanceof CancelledError) throw err;
     }
     run.summary = summary.summary;
+    run.followUps = summary.followUps;
     this.save(run);
     this.bus.emit({ type: 'run.summary', runId: run.id, summary: summary.summary, followUps: summary.followUps, branch: run.integrationBranch ?? '' });
   }
