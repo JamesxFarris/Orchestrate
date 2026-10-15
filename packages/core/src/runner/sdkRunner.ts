@@ -1,5 +1,5 @@
 import { query, type HookCallback, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import { createScopeGuard, ORCH_MCP_SERVER, type GuardDecision } from '../scope/scopeGuard.ts';
+import { createScopeGuard, ORCH_MCP_SERVER, orchTool, type GuardDecision } from '../scope/scopeGuard.ts';
 import { createRoleToolServer, RoleToolState } from './roleTools.ts';
 import type { AgentInvocation, AgentResult, AgentRunner } from './types.ts';
 
@@ -47,6 +47,17 @@ export class SdkRunner implements AgentRunner {
       };
     };
 
+    // One nudge for an agent that tries to end without submitting or escalating. stop_hook_active
+    // means it was nudged already: let it stop, and the pipeline treats it as not submitted.
+    const stopGate: HookCallback = async (input) => {
+      if (input.hook_event_name !== 'Stop' || input.stop_hook_active || state.halted) return {};
+      inv.onSignal({ kind: 'log', level: 'text', text: 'tried to stop without submit_work; reminded once' });
+      return {
+        decision: 'block',
+        reason: `You have not called ${orchTool('submit_work')}. If the work is done and verified, call it now with a short summary. If you cannot finish, call ${orchTool('raise_blocker')} with the reason.`,
+      };
+    };
+
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(new Error('timeout')), inv.runtime.timeoutMs);
     const onParentAbort = () => abort.abort(inv.signal?.reason);
@@ -55,6 +66,7 @@ export class SdkRunner implements AgentRunner {
     const options = buildOptions(inv, {
       roleTools: createRoleToolServer(state),
       preToolUse,
+      stopGate: inv.requireSubmit ? stopGate : undefined,
       decide,
       abort,
     });
@@ -123,6 +135,8 @@ export class SdkRunner implements AgentRunner {
 export interface SessionParts {
   roleTools: ReturnType<typeof createRoleToolServer>;
   preToolUse: HookCallback;
+  /** Only for agents that must submit (see AgentInvocation.requireSubmit). */
+  stopGate?: HookCallback;
   decide: (toolName: string, input: unknown) => GuardDecision;
   abort: AbortController;
 }
@@ -147,7 +161,7 @@ export function buildOptions(inv: AgentInvocation, parts: SessionParts): Options
     tools: inv.tools,
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent'],
     mcpServers: { [ORCH_MCP_SERVER]: parts.roleTools },
-    hooks: { PreToolUse: [{ hooks: [parts.preToolUse] }] },
+    hooks: { PreToolUse: [{ hooks: [parts.preToolUse] }], ...(parts.stopGate ? { Stop: [{ hooks: [parts.stopGate] }] } : {}) },
     canUseTool: async (toolName, input) => {
       const d = parts.decide(toolName, input);
       return d.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: d.reason };

@@ -68,7 +68,8 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
 
     // ---------------------------------------------------------------- GREEN: implement until gates + lead pass
     const writeScope = [...c.writeScope];
-    const commands = c.kind === 'code' ? [testFilesCommand(gates, c.testFiles), gates.typecheck].filter((x): x is string => !!x) : [];
+    // what the implementer may run to check its own work before submitting: its tests, typecheck, lint
+    const commands = c.kind === 'code' ? [testFilesCommand(gates, c.testFiles), gates.typecheck, gates.lint].filter((x): x is string => !!x) : [];
     let feedback: string[] = [];
     let escalations = 0;
     let approved = false;
@@ -85,6 +86,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         system: implementerSystem(org, implementer, c, writeScope, commands, maxLines),
         prompt: implementerPrompt(feedback),
         tools: BUILD_TOOLS,
+        requireSubmit: true,
         guard: {
           write: writeScope,
           read: [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS],
@@ -131,6 +133,13 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         // a ruling is not a failed attempt (for the retry budget or the first-try bonus); MAX_ESCALATIONS bounds this loop
         attempt--;
         task.attempts--;
+        continue;
+      }
+
+      if (res.outcome === 'completed') {
+        // ended without submit_work even after the reminder: unfinished by its own account. The
+        // changes stay in the worktree for the next attempt to check and submit.
+        feedback = ['You ended your session without calling submit_work, so the work was not checked. Your changes are still in place: verify them with the allowed commands, then call submit_work (or raise_blocker if you are stuck).'];
         continue;
       }
 
@@ -264,11 +273,18 @@ async function redPhase(
       system: qaSystem(org, qa, c, cmd),
       prompt: feedback.length ? `Your previous tests were rejected. Fix:\n- ${feedback.join('\n- ')}` : 'Write the failing acceptance tests for this contract.',
       tools: BUILD_TOOLS,
+      requireSubmit: true,
       guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), ...GIT_READONLY] },
       headline: `Writing acceptance tests: ${c.title}`,
     });
     if (res.outcome === 'blocked' || res.outcome === 'scope_change') {
       return { ok: false, detail: `QA could not write tests: ${res.blocker ?? res.scopeRequest?.reason}` };
+    }
+    if (res.outcome === 'completed') {
+      // ended without submit_work even after the reminder; the files stay for the next attempt
+      ctx.gate(task, 'audit', false, 'QA ended without submit_work');
+      feedback = ['You ended your session without calling submit_work. Finish the tests, run them once to see them fail, then call submit_work.'];
+      continue;
     }
     // A session cut short leaves half-written tests, which would fail for the wrong reason and pass as red.
     if (res.outcome === 'budget' || res.outcome === 'error') {

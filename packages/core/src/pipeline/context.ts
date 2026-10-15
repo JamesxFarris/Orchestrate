@@ -23,6 +23,8 @@ export interface AgentCall {
   tools: string[];
   guard: Omit<ScopeGuardConfig, 'root'>;
   schema?: Record<string, unknown>;
+  /** Must end with submit_work or raise_blocker (see AgentInvocation.requireSubmit). */
+  requireSubmit?: boolean;
   /** Initial line on the building's card before the agent reports progress. */
   headline: string;
 }
@@ -173,6 +175,7 @@ export class RunContext {
         tools: c.tools,
         guard: { ...c.guard, root: c.cwd, externalRead: this.org.externalReferenceDirs() },
         outputSchema: c.schema,
+        requireSubmit: c.requireSubmit,
         signal: this.signal,
         onSignal: (s) => {
           if (s.kind === 'progress') this.bus.emit({ type: 'agent.progress', runId, agentId: c.role.id, taskId, summary: s.summary });

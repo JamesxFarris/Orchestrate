@@ -39,6 +39,13 @@ describe('agent session options: what keeps an agent contained', () => {
     expect(options.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe('1');
   });
 
+  it('adds the Stop hook only for agents that must submit', () => {
+    expect(options.hooks?.Stop).toBeUndefined();
+    const gate = async () => ({});
+    const must = buildOptions({ ...inv, requireSubmit: true }, { roleTools, preToolUse: async () => ({}), stopGate: gate, decide: () => ({ allow: true }), abort: new AbortController() });
+    expect(must.hooks?.Stop?.[0]?.hooks).toEqual([gate]);
+  });
+
   it('never defers the role tools behind tool search (the guard refuses ToolSearch)', () => {
     // the SDK marks each tool; reading the registered tools is the only way to see it from outside
     const tools = (roleTools.instance as unknown as { _registeredTools: Record<string, { _meta?: Record<string, unknown> }> })._registeredTools;
