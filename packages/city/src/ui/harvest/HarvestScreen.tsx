@@ -1,6 +1,7 @@
 import { GROWTH } from '@orchestrate/shared';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useCity } from '../../store.ts';
+import { useDialog } from '../useDialog.ts';
 import { harvestOf } from './harvest.ts';
 
 /** The payoff after a project ships: what each task earned, which districts grew, and streaks. */
@@ -10,17 +11,11 @@ export function HarvestScreen() {
   const team = useCity((s) => s.team);
   const run = useCity((s) => (s.harvest ? s.runs[s.harvest.runId] : undefined));
   const closeBtn = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
   const close = () => useCity.getState().openHarvest(undefined);
-
-  useEffect(() => {
-    if (!harvest) return;
-    closeBtn.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [harvest]);
-
   const tally = harvest && progress ? harvestOf(progress, harvest.runId) : undefined;
+  useDialog(dialog, !!(harvest && tally && team), close, closeBtn);
+
   if (!harvest || !tally || !team) return null;
 
   const squad = (id: string) => team.squads.find((s) => s.id === id);
@@ -29,7 +24,7 @@ export function HarvestScreen() {
 
   return (
     <div className="harvest-scrim" onClick={close}>
-      <div className="harvest" role="dialog" aria-modal="true" aria-labelledby="harvest-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialog} className="harvest" role="dialog" aria-modal="true" aria-labelledby="harvest-title" onClick={(e) => e.stopPropagation()}>
         <span className="harvest__eyebrow">Harvest is in</span>
         <h2 id="harvest-title" className="harvest__title">
           {run?.prompt ?? 'Project shipped'}

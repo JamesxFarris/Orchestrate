@@ -1097,6 +1097,12 @@ code {
 .card--blocked {
   animation: blocked-pulse 0.8s ease-in-out infinite;
 }
+@media (prefers-reduced-motion: reduce) {
+  .card--blocked,
+  .runpill__dot {
+    animation: none;
+  }
+}
 @keyframes blocked-pulse {
   50% {
     box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 45%, transparent), 0 10px 24px rgba(38, 44, 52, 0.25);

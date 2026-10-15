@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { PLATFORM_RADIUS } from '../layout.ts';
 import { useCity } from '../store.ts';
+import { dialogOpen } from '../ui/useDialog.ts';
 
 export const CAMERA_LIMITS = {
   minDistance: 30,
@@ -60,7 +61,8 @@ export function CameraRig() {
       return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     };
     const down = (e: KeyboardEvent) => {
-      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      // typing, a shortcut, or a dialog in front of the city: not a camera move
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey || dialogOpen()) return;
       keys.current.add(e.code);
       goal.current = null;
     };

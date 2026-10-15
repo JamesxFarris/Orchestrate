@@ -4,6 +4,7 @@ import { api } from '../api.ts';
 import { CollapsiblePanel } from './CollapsiblePanel.tsx';
 import { ACTIVITY_COLOR, ACTIVITY_LABEL, TASK_COLOR, TASK_LABEL, useCity, useCurrentRun } from '../store.ts';
 import { RoleIcon } from './roleIcons.tsx';
+import { useDialog } from './useDialog.ts';
 
 const STATUS_LABEL: Record<RunState['status'], string> = {
   planning: 'Planning',
@@ -316,6 +317,9 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   const events = useCity((s) => s.events);
   const team = useCity((s) => s.team);
   const action = useAction();
+  const drawer = useRef<HTMLDivElement>(null);
+  // it opens by itself at the approval gate, so it has to take focus and close on Escape
+  useDialog(drawer, open && !!run?.plan, onClose);
   if (!open || !run?.plan) return null;
   const reviews = events.filter((e) => e.type === 'circle.review' && e.runId === run.id);
   const title = (id: string) => {
@@ -325,7 +329,7 @@ export function PlanDrawer({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="drawer" role="dialog" aria-label="Plan" onClick={(e) => e.stopPropagation()}>
+      <div ref={drawer} className="drawer" role="dialog" aria-modal="true" aria-label="Plan" onClick={(e) => e.stopPropagation()}>
         <button className="panel__close" onClick={onClose} aria-label="Close">
           ×
         </button>

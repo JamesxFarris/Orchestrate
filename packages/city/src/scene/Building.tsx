@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Placement } from '../layout.ts';
+import { REDUCED_MOTION } from '../motion.ts';
 import { PALETTE } from '../palette.ts';
 import { ACTIVITY_COLOR, useCity } from '../store.ts';
 import { activityVerb, RoleIcon } from '../ui/roleIcons.tsx';
@@ -166,7 +167,7 @@ export function Building({ p }: { p: Placement }) {
     const au = aura.uniforms;
     au.uTime!.value = t;
     (au.uColor!.value as THREE.Color).lerp(activeColor, k);
-    au.uOpacity!.value += ((active ? (activity === 'blocked' ? 0.55 + 0.35 * Math.sin(t * 15) : 0.5) : 0) - au.uOpacity!.value) * k;
+    au.uOpacity!.value += ((active ? (activity === 'blocked' ? (REDUCED_MOTION ? 0.75 : 0.55 + 0.35 * Math.sin(t * 15)) : 0.5) : 0) - au.uOpacity!.value) * k;
 
     if (ring.current) ring.current.color.copy(activeColor).multiplyScalar(1 + energy * 1.5);
     if (groundGlow.current) groundGlow.current.opacity = energy * 0.55;
