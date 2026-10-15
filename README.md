@@ -108,6 +108,8 @@ At runtime the city restyles those materials:
 
 Settlement houses and props come from Kenney's [Fantasy Town Kit](https://kenney.nl/assets/fantasy-town-kit) (CC0). The kit is single wall and roof tiles, so [tools/build-settlement.mjs](tools/build-settlement.mjs) assembles six houses from them (cottage to two-storey hall) and writes `packages/city/public/models/settlement.glb` plus `kit.json` with each model's size. Each house has a body mesh and a roof mesh, so only the roof takes the squad colour. To rebuild, unzip the kit into `Models/kenney_fantasy-town-kit/src` and run `node tools/build-settlement.mjs`. Credits are in [packages/city/public/models/CREDITS.md](packages/city/public/models/CREDITS.md).
 
+The scenery's broad-leaf trees, the street lamps along the footpaths and the cars parked in City-level settlements come from models in `Models/` (a low-poly tree, a street lamp and a car set). [tools/build-props.mjs](tools/build-props.mjs) unzips them, converts the OBJ files, drops their ground planes, stands each part on the origin and writes `packages/city/public/models/props.glb` plus `src/scene/props.json` with their sizes. ImageMagick, if installed, shrinks the car textures to 128 px.
+
 For a visual check without a person at the screen, `node tools/shot.mjs out.png --url "http://localhost:5173/?settle=5" --district 2 --zoom 6` screenshots the dev city with Playwright. It also takes `--overview`, `--angled` and `--orbit DEG`.
 
 The role-to-model mapping and target heights are set in [archetypes.ts](packages/city/src/scene/archetypes.ts).
@@ -123,7 +125,7 @@ The city sits in a park, and its trees and paths carry information:
   - A ring on the lawn shows its status, and clicking the tree opens the task.
 - **City glow:** when a run completes, a wave of green light rolls out from HQ across the lawn and trees.
 - **Path pulses:** every handoff sends light along the footpaths between the two agents' towers.
-- **Settlements:** shipped work grows each district on the side of its plaza facing away from HQ. A Hamlet has two cottages; a Village adds houses and a well; a Town adds cobbled lanes; a Borough adds a fountain; a City adds street lamps; every City level after that adds a few more houses. Roofs take the squad's colour. Houses keep their places as a district grows, and new ones rise out of the ground after you close the Harvest screen. Sizes come from the daemon's progress (`GET /api/progress`).
+- **Settlements:** shipped work grows each district on the side of its plaza facing away from HQ. A Hamlet has two cottages; a Village adds houses and a well; a Town adds cobbled lanes; a Borough adds a fountain; a City adds street lamps and parked cars; every City level after that adds a few more houses. Roofs take the squad's colour. Houses keep their places as a district grows, and new ones rise out of the ground after you close the Harvest screen. Sizes come from the daemon's progress (`GET /api/progress`).
 
 ### Troubleshooting the city
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { districtPlazaRadius, PLATFORM_RADIUS, type District } from '../src/layout.ts';
-import { HOUSES, houseCount, houseSpots, inSettlement, layoutSettlement } from '../src/scene/settlement/settlementLayout.ts';
+import { PROPS } from '../src/scene/props.ts';
+import { HOUSES, houseCount, houseSpots, inSettlement, layoutSettlement, type HouseSpot } from '../src/scene/settlement/settlementLayout.ts';
 
 const district = (angle: number, size = 20.25, radius = 64): District => ({
   squad: { id: 'render', name: 'Render & UI', color: '#f2a541', mission: '' },
@@ -18,6 +19,28 @@ const offsetDeg = (p: { x: number; z: number }) => {
   const a = Math.atan2(p.z - d.z, p.x - d.x) - d.angle;
   return (Math.atan2(Math.sin(a), Math.cos(a)) * 180) / Math.PI;
 };
+
+type XZ = { x: number; z: number };
+/** A rectangle's corners: `width` along its local x, `depth` along local z, turned by `rot` about y. */
+const footprint = (at: XZ & { rot: number }, width: number, depth: number): XZ[] => {
+  const [c, s] = [Math.cos(at.rot), Math.sin(at.rot)];
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
+    const lx = (a! * width) / 2;
+    const lz = (b! * depth) / 2;
+    return { x: at.x + lx * c + lz * s, z: at.z - lx * s + lz * c };
+  });
+};
+const houseFootprint = (h: HouseSpot) => footprint(h, HOUSES[h.house].width, HOUSES[h.house].depth);
+/** Separating-axis test for two rectangles. */
+const overlap = (p: XZ[], q: XZ[]) =>
+  [p, q].every((poly) =>
+    poly.every((a, i) => {
+      const b = poly[(i + 1) % 4]!;
+      const axis = { x: -(b.z - a.z), z: b.x - a.x };
+      const proj = (pts: XZ[]) => pts.map((v) => v.x * axis.x + v.z * axis.z);
+      return Math.max(...proj(p)) > Math.min(...proj(q)) && Math.max(...proj(q)) > Math.min(...proj(p));
+    }),
+  );
 
 describe('houseCount: a hamlet becomes a city', () => {
   it('follows the settlement ladder, then keeps adding a few per City level', () => {
@@ -62,29 +85,9 @@ describe('houseSpots: where houses go', () => {
   });
 
   it("never lets two houses' footprints touch, even the largest models side by side", () => {
-    /** The house's footprint corners, rotated to face the plaza. */
-    const corners = (h: (typeof spots)[number]) => {
-      const { width, depth } = HOUSES[h.house];
-      const [c, s] = [Math.cos(h.rot), Math.sin(h.rot)];
-      return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
-        const lx = (a! * width) / 2;
-        const lz = (b! * depth) / 2;
-        return { x: h.x + lx * c + lz * s, z: h.z - lx * s + lz * c };
-      });
-    };
-    // separating-axis test for two rectangles
-    const overlap = (p: { x: number; z: number }[], q: { x: number; z: number }[]) =>
-      [p, q].every((poly) =>
-        poly.every((a, i) => {
-          const b = poly[(i + 1) % 4]!;
-          const axis = { x: -(b.z - a.z), z: b.x - a.x };
-          const proj = (pts: typeof p) => pts.map((v) => v.x * axis.x + v.z * axis.z);
-          return Math.max(...proj(p)) > Math.min(...proj(q)) && Math.max(...proj(q)) > Math.min(...proj(p));
-        }),
-      );
     for (const small of [d, district(Math.PI / 4, 8.75)]) {
       const all = houseSpots(small);
-      for (const [i, h] of all.entries()) for (const other of all.slice(i + 1)) expect(overlap(corners(h), corners(other))).toBe(false);
+      for (const [i, h] of all.entries()) for (const other of all.slice(i + 1)) expect(overlap(houseFootprint(h), houseFootprint(other))).toBe(false);
     }
   });
 
@@ -108,7 +111,7 @@ describe('houseSpots: where houses go', () => {
 describe('layoutSettlement: what each level unlocks', () => {
   it('adds a well, then lanes, then a fountain, then lamps', () => {
     const at = (level: number) => layoutSettlement(d, level).features;
-    expect(at(1)).toEqual({ lamps: [], lanes: [] });
+    expect(at(1)).toEqual({ lamps: [], lanes: [], cars: [] });
     expect(at(2).well).toBeDefined();
     expect(at(2).lanes).toEqual([]);
     expect(at(3).lanes.length).toBeGreaterThan(0);
@@ -125,6 +128,34 @@ describe('layoutSettlement: what each level unlocks', () => {
       expect(dist(h, s.features.fountain!)).toBeGreaterThan(4);
       for (const lamp of s.features.lamps) expect(dist(h, lamp)).toBeGreaterThan(2);
     }
+  });
+});
+
+describe('parked cars: a City upgrade', () => {
+  it('arrive at City level, one more per City level after that', () => {
+    expect(layoutSettlement(d, 4).features.cars).toEqual([]);
+    expect(layoutSettlement(d, 5).features.cars).toHaveLength(3);
+    expect(layoutSettlement(d, 7).features.cars).toHaveLength(5);
+    expect(layoutSettlement(d, 20).features.cars).toHaveLength(8);
+  });
+
+  it('park on a lane, along it, clear of houses, lamps, the well and the fountain', () => {
+    const s = layoutSettlement(d, 20);
+    const lanes = s.features.lanes.map((l) => l.radius);
+    for (const car of s.features.cars) {
+      const r = dist(car, centre);
+      expect(Math.min(...lanes.map((l) => Math.abs(r - l)))).toBeLessThan(0.01);
+      // its length (local +x) runs along the lane: perpendicular to the direction from the centre
+      const along = { x: Math.cos(car.rot), z: -Math.sin(car.rot) };
+      expect(Math.abs((along.x * (car.x - d.x) + along.z * (car.z - d.z)) / r)).toBeLessThan(0.01);
+      const reach = PROPS.cars[car.car].width / 2; // half its length
+      const size = PROPS.cars[car.car];
+      for (const h of s.houses) expect(overlap(footprint(car, size.width, size.depth), houseFootprint(h))).toBe(false);
+      for (const lamp of s.features.lamps) expect(dist(car, lamp)).toBeGreaterThan(reach + 0.5);
+      expect(dist(car, s.features.well!)).toBeGreaterThan(reach + 1);
+      expect(dist(car, s.features.fountain!)).toBeGreaterThan(reach + 2);
+    }
+    expect(s.features.cars.every((c) => !['car_10', 'car_11', 'car_12'].includes(c.car))).toBe(true);
   });
 });
 

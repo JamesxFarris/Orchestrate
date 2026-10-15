@@ -1,5 +1,6 @@
 import { districtPlazaRadius, type District } from '../../layout.ts';
 import { rng } from '../rng.ts';
+import type { CarName } from '../props.ts';
 import kit from './kit.json';
 
 /**
@@ -52,6 +53,14 @@ export interface SettlementFeatures {
   fountain?: Point;
   /** City and up: street lamps that glow. */
   lamps: Point[];
+  /** City and up: cars parked along the lanes, one more each City level. */
+  cars: ParkedCar[];
+}
+
+export interface ParkedCar extends Point {
+  /** Rotation about y; the car's length (local x) runs along the lane. */
+  rot: number;
+  car: CarName;
 }
 
 export interface Settlement {
@@ -131,8 +140,24 @@ export function layoutSettlement(d: District, level: number): Settlement {
       lanes: level >= 3 ? LANES.map((lane) => ({ radius: plaza + lane, start: d.angle - ARC - 0.06, length: 2 * ARC + 0.12 })) : [],
       fountain: level >= 4 ? fountain : undefined,
       lamps,
+      cars: level >= 5 ? parkedCars(d, plaza, Math.min(3 + (level - 5), CAR_SPOTS.length)) : [],
     },
   };
+}
+
+/** Parking spots as [lane, offset as a fraction of the arc]: between the lamps (±0.45, ±0.95), off the axis. */
+const CAR_SPOTS: [lane: number, k: number][] = [[0, -0.2], [1, 0.7], [0, 0.7], [1, -0.2], [0, -0.7], [1, 0.2], [1, -0.7], [0, 0.2]];
+/** Cars, vans and hatchbacks; the buses (car_10 to car_12) are too long for a village lane. */
+const PARKED: CarName[] = ['car_01', 'car_02', 'car_03', 'car_04', 'car_05', 'car_06', 'car_07', 'car_08', 'car_09'];
+
+function parkedCars(d: District, plaza: number, count: number): ParkedCar[] {
+  const rand = rng(seedOf(d.squad.id) ^ 0x5eed);
+  return CAR_SPOTS.slice(0, count).map(([lane, k]) => {
+    const theta = d.angle + k * ARC;
+    const p = polar(d, plaza + LANES[lane]!, k * ARC);
+    // along the lane: the tangent (-sin θ, cos θ); local +x maps to (cos r, -sin r)
+    return { ...p, rot: Math.atan2(-Math.cos(theta), -Math.sin(theta)), car: PARKED[Math.floor(rand() * PARKED.length)]! };
+  });
 }
 
 /** True inside any district's settlement band, so scenery trees grow elsewhere. */

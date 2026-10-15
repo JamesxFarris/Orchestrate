@@ -6,6 +6,7 @@ import type { TaskState, TaskStatus } from '@orchestrate/shared';
 import { PALETTE } from '../../palette.ts';
 import { TASK_COLOR, TASK_LABEL, useCity, type Trail } from '../../store.ts';
 import { rng, type ParkLayout } from './parkLayout.ts';
+import { TREE_HEIGHT, usePropGeometry } from '../props.ts';
 import { foliageMaterial, TREE, trunkMaterial } from './treeKit.ts';
 
 // ---------------------------------------------------------------- scenery
@@ -13,6 +14,8 @@ import { foliageMaterial, TREE, trunkMaterial } from './treeKit.ts';
 /** ~190 trees and the path hedges as a handful of instanced draws. */
 export function Scenery({ park }: { park: ParkLayout }) {
   const trunks = useRef<THREE.InstancedMesh>(null);
+  const broadTrunks = useRef<THREE.InstancedMesh>(null);
+  const prop = usePropGeometry();
   const broad = useRef<THREE.InstancedMesh>(null);
   const conifer = useRef<THREE.InstancedMesh>(null);
   const shrubs = useRef<THREE.InstancedMesh>(null);
@@ -31,24 +34,26 @@ export function Scenery({ park }: { park: ParkLayout }) {
     const p = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     const c = new THREE.Color();
-    park.trees.forEach((t, i) => {
+    // conifers: procedural trunk and cones; broad-leaf trees: the project owner's model (unit height)
+    conList.forEach((t, i) => {
       m.compose(p.set(t.x, 0, t.z), q.setFromAxisAngle(up, t.rot), s.setScalar(t.scale));
       trunks.current?.setMatrixAt(i, m);
+      conifer.current?.setMatrixAt(i, m);
+      conifer.current?.setColorAt(i, c.set(t.color));
     });
-    for (const [ref, list] of [[broad, broadList], [conifer, conList]] as const) {
-      list.forEach((t, i) => {
-        m.compose(p.set(t.x, 0, t.z), q.setFromAxisAngle(up, t.rot), s.setScalar(t.scale));
-        ref.current?.setMatrixAt(i, m);
-        ref.current?.setColorAt(i, c.set(t.color));
-      });
-    }
+    broadList.forEach((t, i) => {
+      m.compose(p.set(t.x, 0, t.z), q.setFromAxisAngle(up, t.rot), s.setScalar(t.scale * TREE_HEIGHT));
+      broadTrunks.current?.setMatrixAt(i, m);
+      broad.current?.setMatrixAt(i, m);
+      broad.current?.setColorAt(i, c.set(t.color));
+    });
     const rand = rng(99);
     park.shrubs.forEach((b, i) => {
       m.compose(p.set(b.x, 0.03, b.z), q.setFromAxisAngle(up, rand() * 6), s.set(b.scale, b.scale * (0.8 + rand() * 0.4), b.scale));
       shrubs.current?.setMatrixAt(i, m);
       shrubs.current?.setColorAt(i, c.set(PALETTE.canopy[i % PALETTE.canopy.length]!).multiplyScalar(0.92));
     });
-    for (const r of [trunks, broad, conifer, shrubs]) {
+    for (const r of [trunks, broadTrunks, broad, conifer, shrubs]) {
       if (!r.current) continue;
       r.current.instanceMatrix.needsUpdate = true;
       if (r.current.instanceColor) r.current.instanceColor.needsUpdate = true;
@@ -60,8 +65,9 @@ export function Scenery({ park }: { park: ParkLayout }) {
   const noPick = () => null;
   return (
     <group>
-      <instancedMesh ref={trunks} args={[TREE.trunk, trunkMaterial, park.trees.length]} castShadow raycast={noPick} />
-      <instancedMesh ref={broad} args={[TREE.broadleaf, canopy, broadList.length]} castShadow receiveShadow raycast={noPick} />
+      <instancedMesh ref={trunks} args={[TREE.trunk, trunkMaterial, conList.length]} castShadow raycast={noPick} />
+      <instancedMesh ref={broadTrunks} args={[prop('tree_trunk'), trunkMaterial, broadList.length]} castShadow raycast={noPick} />
+      <instancedMesh ref={broad} args={[prop('tree_leaves'), canopy, broadList.length]} castShadow receiveShadow raycast={noPick} />
       <instancedMesh ref={conifer} args={[TREE.conifer, canopy, conList.length]} castShadow receiveShadow raycast={noPick} />
       <instancedMesh ref={shrubs} args={[TREE.shrub, hedge, park.shrubs.length]} castShadow receiveShadow raycast={noPick} />
     </group>
@@ -312,5 +318,47 @@ export function PathPulses({ park }: { park: ParkLayout }) {
         <Pulse key={t.id} trail={t} park={park} />
       ))}
     </>
+  );
+}
+
+// ---------------------------------------------------------------- street lamps along the footpaths
+
+/** Street lamp height in world units (towers are tens of units, cottages about three). */
+const LAMP_HEIGHT = 4.4;
+const lampBody = new THREE.MeshStandardMaterial({ color: '#3d4a45', roughness: 0.55, metalness: 0.4 });
+const lampGlass = new THREE.MeshStandardMaterial({ color: '#fff1cf', emissive: new THREE.Color('#ffcf7a'), emissiveIntensity: 2.4, toneMapped: false });
+
+/** The project owner's street lamp, instanced along every footpath; the glass glows (bloom picks it up). */
+export function StreetLamps({ park }: { park: ParkLayout }) {
+  const body = useRef<THREE.InstancedMesh>(null);
+  const glass = useRef<THREE.InstancedMesh>(null);
+  const gl = useThree((s) => s.gl);
+  const prop = usePropGeometry();
+
+  useLayoutEffect(() => {
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3(LAMP_HEIGHT, LAMP_HEIGHT, LAMP_HEIGHT);
+    const p = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+    park.lamps.forEach((l, i) => {
+      m.compose(p.set(l.x, 0, l.z), q.setFromAxisAngle(up, l.rot), s);
+      body.current?.setMatrixAt(i, m);
+      glass.current?.setMatrixAt(i, m);
+    });
+    for (const r of [body, glass]) {
+      if (!r.current) continue;
+      r.current.instanceMatrix.needsUpdate = true;
+      r.current.computeBoundingSphere();
+    }
+    gl.shadowMap.needsUpdate = true;
+  }, [park, gl]);
+
+  const noPick = () => null;
+  return (
+    <group>
+      <instancedMesh ref={body} args={[prop('lamp_body'), lampBody, park.lamps.length]} castShadow raycast={noPick} />
+      <instancedMesh ref={glass} args={[prop('lamp_glass'), lampGlass, park.lamps.length]} raycast={noPick} />
+    </group>
   );
 }

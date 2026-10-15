@@ -11,7 +11,7 @@ import { Building } from './Building.tsx';
 import { CAMERA_LIMITS, CameraRig } from './CameraRig.tsx';
 import { Ground } from './Ground.tsx';
 import { Links } from './Links.tsx';
-import { PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
+import { PathPulses, Scenery, StreetLamps, TaskTrees } from './park/Park.tsx';
 import { buildParkLayout } from './park/parkLayout.ts';
 import { Settlements } from './settlement/Settlements.tsx';
 import { WaveDriver } from './park/wave.ts';
@@ -139,7 +139,10 @@ export function City() {
           <group position-y={0.1}>
             <TechCircle layout={layout} />
           </group>
-          <Scenery park={park} />
+          <Suspense fallback={null}>
+            <Scenery park={park} />
+            <StreetLamps park={park} />
+          </Suspense>
           <TaskTrees park={park} />
           <Suspense fallback={null}>
             <Settlements layout={layout} />

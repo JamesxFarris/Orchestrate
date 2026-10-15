@@ -6,7 +6,8 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
-import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
+import { PROPS_URL } from '../props.ts';
+import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type ParkedCar, type Point } from './settlementLayout.ts';
 
 /**
  * Each district's settlement: houses from Kenney's Fantasy Town Kit (roofs in shades of the squad
@@ -204,6 +205,9 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           {features.lamps.map((lamp, i) => (
             <Lamp key={i} at={lamp} post={lantern?.geometry} material={kitMaterial} />
           ))}
+          {features.cars.map((car, i) => (
+            <ParkedCarModel key={i} car={car} />
+          ))}
         </group>
       ))}
     </group>
@@ -262,4 +266,12 @@ function Lamp({ at, post, material }: { at: Point; post?: THREE.BufferGeometry; 
       </mesh>
     </group>
   );
+}
+
+/** A parked car from the project owner's set (textured), on the lane and along it. */
+function ParkedCarModel({ car }: { car: ParkedCar }) {
+  const { nodes } = useGLTF(PROPS_URL);
+  const model = nodes[car.car] as THREE.Mesh | undefined;
+  if (!model) return null;
+  return <mesh geometry={model.geometry} material={model.material} position={[car.x, 0.08, car.z]} rotation-y={car.rot} castShadow receiveShadow />;
 }
