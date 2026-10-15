@@ -66,6 +66,42 @@ describe('daemon API (demo backend)', () => {
     const form = await app.inject({ method: 'POST', url: '/api/runs', headers: { 'content-type': 'text/plain' }, payload: 'prompt=hi' });
     expect(form.statusCode).toBeGreaterThanOrEqual(400);
   });
+
+  it('refuses a cross-site post to the routes that read no body (approve, cancel, ship)', async () => {
+    const { app, backend } = await setup();
+    const id = backend.submit('Add a basic wave spawner', {}).id;
+    for (const action of ['approve', 'cancel', 'ship', 'mark-shipped']) {
+      const res = await app.inject({ method: 'POST', url: `/api/runs/${id}/${action}`, headers: { origin: 'https://evil.example' } });
+      expect(res.statusCode, action).toBe(403);
+      // a browser that leaves out Origin still labels the request cross-site
+      const bare = await app.inject({ method: 'POST', url: `/api/runs/${id}/${action}`, headers: { 'sec-fetch-site': 'cross-site' } });
+      expect(bare.statusCode, action).toBe(403);
+    }
+    expect(backend.get(id)?.status).not.toBe('cancelled');
+  });
+
+  it('refuses other localhost ports: a dev server running agent-written code is not the city', async () => {
+    const { app } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/api/runs', headers: { origin: 'http://localhost:3000' }, payload: { prompt: 'Add a basic wave spawner' } });
+    expect(res.statusCode).toBe(403);
+    const ok = await app.inject({ method: 'POST', url: '/api/runs', headers: { origin: 'http://localhost:5173' }, payload: { prompt: 'Add a basic wave spawner' } });
+    expect(ok.statusCode).toBe(201);
+  });
+
+  it('refuses DNS rebinding: a request whose Host is not this machine', async () => {
+    const { app } = await setup();
+    for (const [method, url] of [['GET', '/api/state'], ['POST', '/api/runs'], ['GET', '/ws']] as const) {
+      const res = await app.inject({ method, url, headers: { host: 'attacker.example:4317' }, payload: method === 'POST' ? { prompt: 'Add a basic wave spawner' } : undefined });
+      expect(res.statusCode, url).toBe(403);
+    }
+    expect((await app.inject({ url: '/api/health', headers: { host: '127.0.0.1:4317' } })).statusCode).toBe(200);
+  });
+
+  it('still lets clients that are not browsers in (the MCP server, curl)', async () => {
+    const { app } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a basic wave spawner' } });
+    expect(res.statusCode).toBe(201);
+  });
 });
 
 const presetsDir = path.resolve(import.meta.dirname, '../../../presets');

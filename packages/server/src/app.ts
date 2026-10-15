@@ -6,7 +6,15 @@ import Fastify from 'fastify';
 import { z } from 'zod';
 import type { Backend } from './backend.ts';
 
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+/** A Host header naming this machine. Anything else is DNS rebinding: a web page whose own hostname now points here. */
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+/** The city dev server (Vite) proxies to the daemon from this port. */
+export const CITY_DEV_PORT = 5173;
+
+/** Browser origins allowed to call the API: the daemon's own pages and the city dev server, on local hostnames only. */
+export function localOrigins(ports: number[]): Set<string> {
+  return new Set(ports.flatMap((port) => ['localhost', '127.0.0.1', '[::1]'].map((h) => `http://${h}:${port}`)));
+}
 
 const SubmitBody = z.object({
   prompt: z.string().min(3).max(20_000),
@@ -19,16 +27,32 @@ export interface AppOptions {
   /** Built city assets to serve at "/". */
   staticDir?: string;
   logger?: boolean;
+  /** Browser origins allowed to call the API. Default: localhost on the daemon's default port (4317) and the city dev port. */
+  origins?: Set<string>;
 }
 
 /**
- * Local-only control plane. Browsers on other origins are refused (CORS + JSON-only bodies + WS
- * origin check) so a web page cannot start paid runs on your machine.
+ * Local-only control plane: a web page must not be able to start paid runs or ship on your machine.
+ * - The Host header must name this machine, which defeats DNS rebinding.
+ * - A browser request that changes anything (POST, the WebSocket) must come from an allowed origin.
+ *   CORS alone is not enough: it only hides responses, and a form post runs the route without asking.
+ * - Clients that are not browsers (the MCP server, curl) send no Origin and are allowed.
  */
-export async function buildApp({ backend, staticDir, logger = false }: AppOptions) {
+export async function buildApp({ backend, staticDir, logger = false, origins = localOrigins([4317, CITY_DEV_PORT]) }: AppOptions) {
   const app = Fastify({ logger });
+  const allowed = (origin: string | undefined) => origin === undefined || origins.has(origin);
 
-  await app.register(cors, { origin: (origin, cb) => cb(null, !origin || LOCAL_ORIGIN.test(origin)) });
+  app.addHook('onRequest', async (req, reply) => {
+    if (!LOCAL_HOST.test(req.headers.host ?? '')) return reply.code(403).send({ error: 'host not allowed' });
+    if (req.method === 'GET' && !req.headers.upgrade) return; // reads: CORS keeps other origins from seeing the answer
+    const origin = req.headers.origin;
+    // Without Origin, a browser still says where the request came from (Sec-Fetch-Site), unlike curl or the MCP server.
+    const site = req.headers['sec-fetch-site'];
+    const browserCrossSite = origin === undefined && site !== undefined && site !== 'same-origin' && site !== 'none';
+    if (!allowed(origin) || browserCrossSite) return reply.code(403).send({ error: 'origin not allowed' });
+  });
+
+  await app.register(cors, { origin: (origin, cb) => cb(null, allowed(origin)) });
   await app.register(websocket);
 
   app.get('/api/health', async () => ({ ok: true, mode: backend.mode }));
@@ -82,12 +106,8 @@ export async function buildApp({ backend, staticDir, logger = false }: AppOption
     (await backend.markShipped(req.params.id)) ? { ok: true } : reply.code(409).send({ error: 'only a completed project that has not shipped yet can be marked as shipped' }),
   );
 
-  app.get('/ws', { websocket: true }, (socket, req) => {
-    const origin = req.headers.origin;
-    if (origin && !LOCAL_ORIGIN.test(origin)) {
-      socket.close(1008, 'origin not allowed');
-      return;
-    }
+  // the onRequest hook has already refused foreign hosts and origins before the upgrade
+  app.get('/ws', { websocket: true }, (socket) => {
     socket.send(JSON.stringify({ type: 'hello', mode: backend.mode, agents: backend.bus.agentSnapshots() }));
     const off = backend.bus.on((e) => socket.send(JSON.stringify(e)));
     socket.on('close', off);

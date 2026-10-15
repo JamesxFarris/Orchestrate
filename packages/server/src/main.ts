@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { Org, Orchestrator, SdkRunner, Store } from '@orchestrate/core';
-import { buildApp } from './app.ts';
+import { buildApp, CITY_DEV_PORT, localOrigins } from './app.ts';
 import { liveBackend, type Backend } from './backend.ts';
 import { DemoBackend } from './demo.ts';
 
@@ -38,8 +38,8 @@ if (values.demo) {
   console.log(`[orchestrate] target repo: ${repoRoot}`);
 }
 
-const app = await buildApp({ backend, staticDir: path.join(HOME, 'packages', 'city', 'dist') });
 const port = Number(values.port);
+const app = await buildApp({ backend, staticDir: path.join(HOME, 'packages', 'city', 'dist'), origins: localOrigins([port, CITY_DEV_PORT]) });
 await app.listen({ host: '127.0.0.1', port });
 console.log(`[orchestrate] ${backend.mode} mode · team "${org.project.name}" (${org.roles.length} agents) · http://127.0.0.1:${port}`);
 
