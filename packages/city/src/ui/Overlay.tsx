@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { roleName, type OrchestrateEvent, type RunState } from '@orchestrate/shared';
 import { api } from '../api.ts';
 import { CollapsiblePanel } from './CollapsiblePanel.tsx';
@@ -128,11 +128,15 @@ export function PromptBar() {
   const [autoApprove, setAutoApprove] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // State updates land on the next render, so two quick Enters would both see busy=false and start
+  // two paid runs. The ref flips at once.
+  const inFlight = useRef(false);
   const run = useCurrentRun();
   const running = run && !['completed', 'failed', 'cancelled'].includes(run.status);
 
   const send = async () => {
-    if (text.trim().length < 3) return;
+    if (inFlight.current || text.trim().length < 3) return;
+    inFlight.current = true;
     setBusy(true);
     setError(undefined);
     try {
@@ -141,6 +145,7 @@ export function PromptBar() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -159,7 +164,8 @@ export function PromptBar() {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            void send();
+            // a held key repeats, and Enter also confirms IME composition (CJK input): neither is a send
+            if (!e.repeat && !e.nativeEvent.isComposing) void send();
           }
         }}
         placeholder={running ? 'A run is in progress. You can queue another request…' : 'Tell the VP of Engineering what to build…'}
