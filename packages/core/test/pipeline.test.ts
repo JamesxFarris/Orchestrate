@@ -2,7 +2,9 @@ import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OrchestrateEvent, Plan } from '@orchestrate/shared';
+import type { CommandResult } from '../src/gates/gates.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
+import { redRejection } from '../src/pipeline/taskPipeline.ts';
 import { FakeRunner, type FakeAgentContext, type FakeReply } from '../src/runner/fakeRunner.ts';
 import { Store } from '../src/store/store.ts';
 import { codeTask, fixtureOrg, makeFixtureRepo, planOf, sh, sumImpl, sumTest } from './helpers.ts';
@@ -244,6 +246,40 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     expect(planCalls[0]!.prompt).toContain('[Architect] rename the task');
   });
 
+  it('discards tests from a QA session that ran out of budget, and asks again', async () => {
+    const env = setup(
+      team(sumPlan, {
+        qa: (ctx) => {
+          if (ctx.attempt === 1) {
+            ctx.write('test/sum.test.js', "import { test } from 'node:test';\n// TODO"); // half-written
+            return { ended: 'budget' };
+          }
+          ctx.write('test/sum.test.js', sumTest);
+          ctx.submit('tests written');
+        },
+      }),
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+    const runner = (env.orch as unknown as { runner: FakeRunner }).runner;
+    expect(runner.calls.find((c) => c.prompt.includes('ended before you finished'))).toBeDefined();
+  });
+
+  it('does not count a test file that fails to parse as "failing first"', async () => {
+    const env = setup(
+      team(sumPlan, {
+        qa: (ctx) => {
+          ctx.write('test/sum.test.js', ctx.attempt === 1 ? 'import { test } from "node:test";\ntest("sum", () => {' : sumTest);
+          ctx.submit('tests written');
+        },
+      }),
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+    const red = env.events.filter((e) => e.type === 'gate.result' && e.gate === 'red');
+    expect(red.map((e) => e.type === 'gate.result' && e.ok)).toEqual([false, true]);
+  });
+
   it('never approves a change because the lead review was unreadable: asks again, then escalates', async () => {
     const env = setup(team(sumPlan, { review: () => ({ text: 'looks fine I guess' }) }));
     const run = await env.orch.wait(env.orch.submit('add sum').id);
@@ -347,5 +383,21 @@ describe('shipping and progression (real git)', () => {
   it('refuses to ship a run that has not completed', async () => {
     const env = setup(team(sumPlan));
     expect(await env.orch.ship('no-such-run')).toMatchObject({ ok: false, reason: 'not-ready' });
+  });
+});
+
+describe('redRejection: what counts as tests failing first', () => {
+  const run = (over: Partial<CommandResult>): CommandResult => ({ ok: false, code: 1, output: '', timedOut: false, ...over });
+  const files = ['test/sum.test.js'];
+  it('accepts tests that fail because the feature is missing', () => {
+    expect(redRejection(run({ output: 'AssertionError: expected 3, got undefined' }), files)).toBeUndefined();
+    expect(redRejection(run({ output: "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '../src/sum.js'" }), files)).toBeUndefined();
+    // a syntax error somewhere else is the code's problem, not the test's
+    expect(redRejection(run({ output: 'SyntaxError: Unexpected token in src/legacy.js' }), files)).toBeUndefined();
+  });
+  it('rejects passing tests, a timeout, and a test file that does not parse', () => {
+    expect(redRejection(run({ ok: true, code: 0 }), files)).toMatch(/pass before anything is implemented/);
+    expect(redRejection(run({ timedOut: true, code: null }), files)).toMatch(/timed out/);
+    expect(redRejection(run({ output: 'test/sum.test.js:3\nSyntaxError: Unexpected end of input' }), files)).toMatch(/does not parse/);
   });
 });

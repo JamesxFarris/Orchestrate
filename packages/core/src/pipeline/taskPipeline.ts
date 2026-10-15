@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { CodeReview, EscalationDecision, type RoleConfig, type TaskState } from '@orchestrate/shared';
-import { auditChanges, runCommand, testFilesCommand } from '../gates/gates.ts';
+import { auditChanges, runCommand, testFilesCommand, type CommandResult } from '../gates/gates.ts';
 import * as g from '../git/git.ts';
 import {
   implementerPrompt,
@@ -266,6 +266,13 @@ async function redPhase(
     if (res.outcome === 'blocked' || res.outcome === 'scope_change') {
       return { ok: false, detail: `QA could not write tests: ${res.blocker ?? res.scopeRequest?.reason}` };
     }
+    // A session cut short leaves half-written tests, which would fail for the wrong reason and pass as red.
+    if (res.outcome === 'budget' || res.outcome === 'error') {
+      ctx.gate(task, 'audit', false, `QA session ended early (${res.outcome}); discarding its tests`);
+      await g.resetHard(dir, base);
+      feedback = [`Your previous session ended before you finished (${res.outcome === 'budget' ? 'it ran out of turns or budget' : 'it stopped with an error'}). Write complete tests, run them once, and call submit_work.`];
+      continue;
+    }
 
     await g.commitAll(dir, `test(${c.id}): acceptance tests [attempt ${attempt + 1}]`, org.project.linkDirs);
     const changed = await g.changedFiles(dir, base);
@@ -281,14 +288,28 @@ async function redPhase(
 
     const r = await runCommand(cmd, dir, org.gates.timeoutMs, ctx.signal);
     ctx.throwIfCancelled();
-    // Red means the new tests fail before implementation. Passing tests prove nothing.
-    ctx.gate(task, 'red', !r.ok, r.ok ? 'tests PASS without implementation — they do not test the new behaviour' : r.output);
-    if (r.ok) {
+    // Red means the new tests fail before implementation. Passing tests prove nothing, and neither
+    // do tests that never ran: a hang, or a syntax error in the test file itself. ("Cannot find
+    // module" is the normal red for a module that doesn't exist yet, so it counts.)
+    const why = redRejection(r, c.testFiles);
+    ctx.gate(task, 'red', !why, why ?? r.output);
+    if (why) {
       await g.resetHard(dir, base);
-      feedback = ['Your tests pass before anything is implemented, so they do not exercise the new behaviour. Assert the acceptance criteria against the code that will be written.'];
+      feedback = [why];
       continue;
     }
     return { ok: true, sha: await g.head(dir) };
   }
   return { ok: false, detail: `QA failed to produce valid failing tests after ${org.policy.maxRetries + 1} attempts: ${feedback.join('; ')}` };
+}
+
+/** Why a test run does not count as "red" (failing first), or undefined when it does. */
+export function redRejection(r: CommandResult, testFiles: readonly string[]): string | undefined {
+  if (r.ok) return 'Your tests pass before anything is implemented, so they do not exercise the new behaviour. Assert the acceptance criteria against the code that will be written.';
+  if (r.timedOut) return 'The test command timed out, so the tests never reported a result. Make them finish quickly (no waiting on servers, timers or input) and assert the acceptance criteria.';
+  const own = testFiles.map((f) => f.split('/').pop()!);
+  if (/SyntaxError/.test(r.output) && own.some((name) => r.output.includes(name))) {
+    return `Your test file does not parse (SyntaxError), so it failed without testing anything. Fix the syntax; it should fail only because the feature is missing.\n${r.output.slice(-800)}`;
+  }
+  return undefined;
 }

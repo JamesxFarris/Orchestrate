@@ -23,6 +23,8 @@ export interface FakeReply {
   structured?: unknown;
   text?: string;
   costUsd?: number;
+  /** End the session as if it hit its budget or crashed, whatever the agent did before. */
+  ended?: 'budget' | 'error';
 }
 
 export type FakeHandler = (ctx: FakeAgentContext) => Promise<FakeReply | void> | FakeReply | void;
@@ -82,7 +84,8 @@ export class FakeRunner implements AgentRunner {
     if (costUsd) inv.onSignal({ kind: 'cost', usd: costUsd });
 
     let outcome: AgentResult['outcome'] = 'completed';
-    if (state.scopeRequest) outcome = 'scope_change';
+    if (reply.ended) outcome = reply.ended;
+    else if (state.scopeRequest) outcome = 'scope_change';
     else if (state.blocker) outcome = 'blocked';
     else if (state.submitSummary) outcome = 'submitted';
 
