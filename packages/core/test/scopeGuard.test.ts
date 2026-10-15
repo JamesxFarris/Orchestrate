@@ -11,7 +11,7 @@ const guard = createScopeGuard({
   write: ['src/game/waves/**'],
   read: ['src/**', 'docs/**'],
   protected: ['src/game/waves/spawner.test.ts'],
-  bash: [commandPattern('npm test'), commandPattern('npx vitest run {files}'), GIT_READONLY],
+  bash: [commandPattern('npm test'), commandPattern('npx vitest run {files}'), ...GIT_READONLY],
 });
 
 const allowed = (tool: string, input: unknown) => guard.check(tool, input).allow;
@@ -57,15 +57,34 @@ describe('scope guard: reads and search', () => {
     expect(allowed('Read', { file_path: abs('secrets/.env') })).toBe(false);
     expect(allowed('Read', { file_path: path.resolve(root, '..', 'other', 'file.ts') })).toBe(false);
   });
-  it('allows search tools inside the repo only', () => {
-    expect(allowed('Grep', { pattern: 'x' })).toBe(true);
-    expect(allowed('Glob', { pattern: '**/*.ts', path: abs('src') })).toBe(true);
+  it('lets Glob and LS list names anywhere in the repo, but not outside it', () => {
+    expect(allowed('Glob', { pattern: '**/*.ts' })).toBe(true);
+    expect(allowed('Glob', { pattern: '**/*', path: abs('secrets') })).toBe(true);
+    expect(allowed('Glob', { pattern: 'x', path: path.resolve(root, '..') })).toBe(false);
+  });
+  it('keeps Grep (which returns file contents) inside the read scope', () => {
+    expect(allowed('Grep', { pattern: 'x', path: abs('src') })).toBe(true);
+    expect(allowed('Grep', { pattern: 'x', path: abs('src/game/waves') })).toBe(true);
+    expect(allowed('Grep', { pattern: 'x', path: 'docs' })).toBe(true);
+    expect(allowed('Grep', { pattern: 'x', path: abs('src/game/waves/spawner.ts') })).toBe(true);
+    // the repo root holds files outside the scope, so a scoped agent must name a directory
+    expect(allowed('Grep', { pattern: 'API_KEY' })).toBe(false);
+    expect(allowed('Grep', { pattern: 'x', path: abs('secrets') })).toBe(false);
+    expect(allowed('Grep', { pattern: 'x', path: abs('secrets/.env') })).toBe(false);
     expect(allowed('Grep', { pattern: 'x', path: path.resolve(root, '..') })).toBe(false);
+    expect(guard.check('Grep', { pattern: 'x' })).toMatchObject({ reason: expect.stringContaining('src, docs') });
+  });
+  it('lets an agent that reads everything Grep everywhere', () => {
+    const planner = createScopeGuard({ root, write: [], read: ['**'], protected: [], bash: [] });
+    expect(planner.check('Grep', { pattern: 'x' }).allow).toBe(true);
+    expect(planner.check('Grep', { pattern: 'x', path: abs('secrets') }).allow).toBe(true);
   });
 });
 
 describe('scope guard: bash', () => {
-  it.each(['npm test', 'npx vitest run src/game/waves/spawner.test.ts', 'npx vitest run a.test.ts b.test.ts', 'git diff', 'git log --oneline -5', 'git status'])(
+  it.each(['npm test', 'npx vitest run src/game/waves/spawner.test.ts', 'npx vitest run a.test.ts b.test.ts', 'git diff', 'git log --oneline -5', 'git status',
+    'git status --short', 'git diff --stat', 'git diff --cached --name-only', 'git diff -- src/game/waves/spawner.ts',
+    'git log --stat -n 3', 'git show --stat HEAD', 'git show --name-only HEAD~2'])(
     'allows %s',
     (command) => expect(allowed('Bash', { command })).toBe(true),
   );
@@ -82,6 +101,19 @@ describe('scope guard: bash', () => {
     'git push origin main',
     'git checkout -- .',
     'git diff --output=src/engine/x.ts',
+    // ways to print files outside the read scope, or anywhere on disk
+    'git diff --no-index C:/Users/x/.ssh/id_rsa C:/Windows/win.ini',
+    'git diff --no-index ../other/secret.txt src/x.ts',
+    'git show HEAD:secrets/.env',
+    'git show HEAD',
+    'git show --oneline HEAD',
+    'git log -p',
+    'git log --patch -1',
+    'git diff main',
+    'git diff HEAD:secrets/.env',
+    'git diff -- ../outside.txt',
+    'git diff --ext-diff',
+    'git log --format=%H',
     'npm test\nrm -rf /',
     '',
   ])('denies %j', (command) => expect(allowed('Bash', { command })).toBe(false));

@@ -89,7 +89,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
           write: writeScope,
           read: [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS],
           protected: c.testFiles,
-          bash: [...commands.map(commandPattern), GIT_READONLY],
+          bash: [...commands.map(commandPattern), ...GIT_READONLY],
         },
         headline: attempt ? `Retry ${attempt}: ${c.title}` : `Implementing: ${c.title}`,
       });
@@ -255,7 +255,7 @@ async function redPhase(
       system: qaSystem(org, qa, c, cmd),
       prompt: feedback.length ? `Your previous tests were rejected. Fix:\n- ${feedback.join('\n- ')}` : 'Write the failing acceptance tests for this contract.',
       tools: BUILD_TOOLS,
-      guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), GIT_READONLY] },
+      guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), ...GIT_READONLY] },
       headline: `Writing acceptance tests: ${c.title}`,
     });
     if (res.outcome === 'blocked' || res.outcome === 'scope_change') {
