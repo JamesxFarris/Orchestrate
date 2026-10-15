@@ -181,25 +181,30 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       // -------------------------------------------------------------- lead review
       ctx.setTaskStatus(task, 'review');
       ctx.handoff(task, implementer.id, lead.id, 'code review');
-      const reviewRun = await ctx.callAgent({
-        role: lead,
-        activity: 'reviewing',
-        task,
-        cwd: wt.dir,
-        system: leadReviewSystem(org, lead),
-        prompt: leadReviewPrompt(c, await g.diffText(wt.dir, base), res.submitSummary, gateNotes),
-        tools: READ_TOOLS,
-        guard: { write: [], read: ['**'], protected: [], bash: [] },
-        schema: outputSchema(CodeReview),
-        headline: `Reviewing: ${c.title}`,
-      });
-      const review = parseStructured(CodeReview, reviewRun);
+      const reviewPrompt = leadReviewPrompt(c, await g.diffText(wt.dir, base), res.submitSummary, gateNotes);
+      const askLead = async (unreadable?: string) =>
+        parseStructured(
+          CodeReview,
+          await ctx.callAgent({
+            role: lead,
+            activity: 'reviewing',
+            task,
+            cwd: wt.dir,
+            system: leadReviewSystem(org, lead),
+            prompt: unreadable ? `${reviewPrompt}\n\nYour previous reply could not be read as a review (${unreadable}). Review the same diff and reply with only the structured verdict.` : reviewPrompt,
+            tools: READ_TOOLS,
+            guard: { write: [], read: ['**'], protected: [], bash: [] },
+            schema: outputSchema(CodeReview),
+            headline: unreadable ? `Re-reviewing: ${c.title}` : `Reviewing: ${c.title}`,
+          }),
+        );
+      // A review nobody can read is not an approval: ask once more, then hand it to a person.
+      let review = await askLead();
       if (!review.ok) {
-        // Gates are the hard bar; an unreadable review does not block a verified change.
-        ctx.bus.emit({ type: 'agent.log', runId: ctx.run.id, agentId: lead.id, taskId: c.id, kind: 'error', text: `review unreadable (${review.error}); gates passed, approving` });
-        approved = true;
-        break;
+        ctx.bus.emit({ type: 'agent.log', runId: ctx.run.id, agentId: lead.id, taskId: c.id, kind: 'error', text: `review unreadable (${review.error}); asking again` });
+        review = await askLead(review.error);
       }
+      if (!review.ok) return escalate(`the lead's review could not be read twice (${review.error}). Gates passed, but nobody has reviewed this change.`);
       ctx.bus.emit({ type: 'code.review', runId: ctx.run.id, taskId: c.id, roleId: lead.id, review: review.value });
       if (review.value.verdict === 'approve') {
         approved = true;

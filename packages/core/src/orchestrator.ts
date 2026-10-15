@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -226,17 +226,19 @@ export class Orchestrator {
       signal,
     );
     try {
-      const plan = await this.planWithCircle(ctx);
-      if (!plan) {
-        this.setStatus(run, 'failed', run.detail ?? 'no acceptable plan');
+      const planned = await this.planWithCircle(ctx);
+      if (!planned.plan) {
+        this.setStatus(run, 'failed', planned.reason);
         return run;
       }
+      const { plan, needsHuman } = planned;
       run.plan = plan;
       run.tasks = plan.tasks.map((contract) => ({ contract, status: 'pending', attempts: 0 }));
       this.save(run);
 
-      if (this.org.policy.requireHumanApproval && !opts.autoApprove) {
-        this.setStatus(run, 'awaiting_approval');
+      // auto-approve skips the gate only for a plan the Tech Circle actually approved
+      if (needsHuman || (this.org.policy.requireHumanApproval && !opts.autoApprove)) {
+        this.setStatus(run, 'awaiting_approval', needsHuman);
         await new Promise<void>((resolve, reject) => this.approvals.set(run.id, { resolve, reject }));
       }
 
@@ -262,13 +264,18 @@ export class Orchestrator {
     return run;
   }
 
-  /** Master drafts; deterministic validation and the Tech Circle push back; at most N revision rounds. */
-  private async planWithCircle(ctx: RunContext): Promise<Plan | undefined> {
+  /**
+   * Master drafts; deterministic validation and the Tech Circle push back; at most N revision rounds.
+   * `needsHuman` says why a person must approve the plan even when the run is auto-approved: a
+   * reviewer whose verdict could not be read, or concerns left after the last round.
+   */
+  private async planWithCircle(ctx: RunContext): Promise<{ plan: Plan; needsHuman?: string } | { plan?: undefined; reason: string }> {
     const { org, run } = ctx;
     const master = org.master();
     let previous: Plan | undefined;
     let feedback: string[] = [];
     let lastValid: Plan | undefined;
+    let unread: string[] = [];
 
     for (let round = 0; round <= org.policy.circleRevisionRounds; round++) {
       this.setStatus(run, 'planning', round ? `revision ${round}` : undefined);
@@ -301,25 +308,36 @@ export class Orchestrator {
       // -------------------------------------------------------------- Tech Circle
       const involved = new Set(plan.tasks.map((t) => t.squad));
       const reviewers = org.circle().filter((r) => r.kind !== 'master' && (!r.squad || involved.has(r.squad)));
-      if (reviewers.length === 0) return plan;
+      if (reviewers.length === 0) return { plan };
       this.setStatus(run, 'reviewing', `round ${round + 1}`);
       this.bus.emit({ type: 'circle.convened', runId: run.id, members: [master.id, ...reviewers.map((r) => r.id)] });
-      const reviews = await Promise.all(
-        reviewers.map(async (role) => {
-          const r = await ctx.callAgent({
+      const ask = async (role: RoleConfig, unreadable?: string) =>
+        parseStructured(
+          CircleReview,
+          await ctx.callAgent({
             role,
             activity: 'reviewing',
             cwd: this.repoRoot,
             system: circleReviewSystem(org, role),
-            prompt: circleReviewPrompt(run.prompt, plan),
+            prompt: unreadable
+              ? `${circleReviewPrompt(run.prompt, plan)}
+
+Your previous reply could not be read as a review (${unreadable}). Reply with only the structured verdict.`
+              : circleReviewPrompt(run.prompt, plan),
             tools: READ_TOOLS,
             guard: READ_ONLY,
             schema: outputSchema(CircleReview),
             headline: 'Tech Circle: reviewing the plan',
-          });
-          const p = parseStructured(CircleReview, r);
-          // An unreadable review abstains rather than blocking the circle.
-          const review: CircleReview = p.ok ? p.value : { verdict: 'approve', concerns: [`(review unreadable: ${p.error})`], requiredChanges: [] };
+          }),
+        );
+      unread = [];
+      const reviews = await Promise.all(
+        reviewers.map(async (role) => {
+          let p = await ask(role);
+          if (!p.ok) p = await ask(role, p.error);
+          // Still unreadable: not an approval. It doesn't block the others, but a person must look.
+          if (!p.ok) unread.push(`${roleName(role, org.squads)} (${p.error})`);
+          const review: CircleReview = p.ok ? p.value : { verdict: 'revise', concerns: [`(review unreadable: ${p.error})`], requiredChanges: [] };
           this.bus.emit({ type: 'circle.review', runId: run.id, roleId: role.id, review });
           return { role, review };
         }),
@@ -327,19 +345,18 @@ export class Orchestrator {
       const changes = reviews.flatMap(({ role, review }) =>
         review.verdict === 'revise' ? review.requiredChanges.map((c) => `[${roleName(role, org.squads)}] ${c}`) : [],
       );
-      const approved = changes.length === 0;
+      const approved = changes.length === 0 && unread.length === 0;
       this.bus.emit({ type: 'circle.adjourned', runId: run.id, approved });
-      if (approved) return plan;
+      if (changes.length === 0) return unread.length ? { plan, needsHuman: `Unreviewed: the Tech Circle could not read the verdict of ${unread.join(', ')}.` } : { plan };
       feedback = changes;
     }
 
     if (lastValid) {
-      // Out of rounds but structurally sound: let the human gate decide with the concerns visible.
-      run.detail = `Tech Circle still had concerns after ${org.policy.circleRevisionRounds} revisions: ${feedback.join(' | ')}`;
-      return lastValid;
+      // Out of rounds but structurally sound: a person decides, with the concerns in front of them.
+      const unreviewed = unread.length ? ` Also unreviewed by ${unread.join(', ')}.` : '';
+      return { plan: lastValid, needsHuman: `Tech Circle still had concerns after ${org.policy.circleRevisionRounds} revisions: ${feedback.join(' | ')}.${unreviewed}` };
     }
-    run.detail = `no valid plan after ${org.policy.circleRevisionRounds + 1} attempts: ${feedback.join(' | ')}`;
-    return undefined;
+    return { reason: `no valid plan after ${org.policy.circleRevisionRounds + 1} attempts: ${feedback.join(' | ')}` };
   }
 
   private async executeTasks(ctx: RunContext, baseRef: string): Promise<void> {

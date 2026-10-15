@@ -244,6 +244,40 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     expect(planCalls[0]!.prompt).toContain('[Architect] rename the task');
   });
 
+  it('never approves a change because the lead review was unreadable: asks again, then escalates', async () => {
+    const env = setup(team(sumPlan, { review: () => ({ text: 'looks fine I guess' }) }));
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('escalated');
+    expect(run.tasks[0]!.detail).toMatch(/could not be read twice/);
+    const runner = (env.orch as unknown as { runner: FakeRunner }).runner;
+    expect(runner.calls.filter((c) => c.prompt.includes('could not be read as a review'))).toHaveLength(1);
+    expect(showOnBranch(env.repo, `orch/run-${run.id}`, 'src/sum.js')).toBeUndefined();
+  });
+
+  it('accepts a lead review that comes back readable the second time', async () => {
+    const env = setup(team(sumPlan, { review: (ctx) => (ctx.attempt === 1 ? { text: 'oops' } : { structured: { verdict: 'approve', notes: 'LGTM', issues: [] } }) }));
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+  });
+
+  it('stops for a person when a Tech Circle verdict is unreadable, even with auto-approve', async () => {
+    const env = setup(team(sumPlan, { circle: (ctx) => (ctx.inv.agentId === 'arch' ? { text: 'hmm' } : { structured: { verdict: 'approve', concerns: [], requiredChanges: [] } }) }));
+    const a = env.orch.submit('add sum', { autoApprove: true });
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    expect(env.orch.get(a.id)!.detail).toMatch(/Unreviewed: .*Architect/);
+    expect(env.orch.approve(a.id)).toBe(true);
+    expect((await env.orch.wait(a.id)).status).toBe('completed');
+  });
+
+  it('stops for a person, concerns visible, when the circle still wants changes after the last round', async () => {
+    const env = setup(team(sumPlan, { circle: () => ({ structured: { verdict: 'revise', concerns: ['naming'], requiredChanges: ['rename the task'] } }) }));
+    const a = env.orch.submit('add sum');
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    expect(env.orch.get(a.id)!.detail).toMatch(/still had concerns.*rename the task/);
+    env.orch.cancel(a.id);
+    expect((await env.orch.wait(a.id)).status).toBe('cancelled');
+  });
+
   it('waits at the human gate until approved, and can be cancelled there', async () => {
     const env = setup(team(sumPlan), { policy: { requireHumanApproval: true, maxRetries: 1, maxChangedLines: 200, circleRevisionRounds: 0, maxParallel: 1 } });
     const a = env.orch.submit('add sum');
