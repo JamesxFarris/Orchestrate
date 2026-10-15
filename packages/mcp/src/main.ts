@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { ProgressSnapshot, RunState } from '@orchestrate/shared';
@@ -7,19 +8,43 @@ import { z } from 'zod';
 const BASE = (process.env.ORCH_URL ?? 'http://127.0.0.1:4317').replace(/\/$/, '');
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 
+/**
+ * One request to the daemon. node:http rather than fetch: fetch gives up after 5 minutes without
+ * response headers, and a ship that re-runs the full suite can take longer (it would be reported
+ * as failed while it carried on).
+ */
 async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-  let res: Response;
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  let status: number;
+  let text: string;
   try {
-    res = await fetch(`${BASE}${path}`, {
-      method,
-      headers: body ? { 'content-type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new Error(`Orchestrate daemon is not reachable at ${BASE}. Start it with "npm run daemon" (or "npm run daemon -- --demo").`);
+    ({ status, text } = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+      const req = request(`${BASE}${path}`, { method, headers: payload ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } : {} }, (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c: string) => (data += c));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, text: data }));
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.end(payload);
+    }));
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ECONNREFUSED') throw new Error(`Orchestrate daemon is not reachable at ${BASE}. Start it with "npm run daemon" (or "npm run daemon -- --demo").`);
+    throw new Error(`Request to the Orchestrate daemon failed (${method} ${path}): ${(err as Error).message}`);
   }
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(data.error ?? `${method} ${path} -> HTTP ${res.status}`);
+  let data: T & { error?: string; output?: string };
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`${method} ${path} -> HTTP ${status}: ${text.slice(0, 300)}`);
+  }
+  if (status < 200 || status >= 300) {
+    // a refused ship carries git's or the test suite's output: keep its end, where the reason is
+    const output = data.output ? `\n${data.output.slice(-2000)}` : '';
+    throw new Error(`${data.error ?? `${method} ${path} -> HTTP ${status}`}${output}`);
+  }
   return data;
 }
 
@@ -58,9 +83,9 @@ server.registerTool(
     description:
       'Hand a feature request or bug to the engineering team. The VP of Engineering (the Master) plans it into scoped tasks, the Tech Circle reviews, and (after approval) squads implement with tests first. Watch progress in the City at the daemon URL.',
     inputSchema: {
-      prompt: z.string().min(3).describe('What you want built or fixed, with any constraints.'),
-      autoApprove: z.boolean().optional().describe('Skip the human plan-approval gate. Default false.'),
-      baseRef: z.string().optional().describe('Branch/commit to build on. Defaults to the project default branch.'),
+      prompt: z.string().min(3).max(20_000).describe('What you want built or fixed, with any constraints.'),
+      autoApprove: z.boolean().optional().describe('Skip the human plan-approval gate when the Tech Circle approves the plan. Default false.'),
+      baseRef: z.string().max(200).optional().describe('Branch/commit to build on. Defaults to the project default branch.'),
     },
   },
   async (args) => {
