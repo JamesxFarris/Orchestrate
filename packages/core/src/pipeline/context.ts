@@ -52,8 +52,13 @@ export class Integration {
     }
   }
 
+  /**
+   * The latest verified commit. While a merge is being tested, HEAD is that unverified merge, so
+   * this waits for it to pass or be rolled back: a task branched from it would carry reverted code
+   * back in later.
+   */
   head(): Promise<string> {
-    return g.head(this.worktree.dir);
+    return this.lock.then(() => g.head(this.worktree.dir));
   }
 
   /** Merge a task branch, run the full suite, and roll back on failure. */
@@ -63,7 +68,7 @@ export class Integration {
     verify: ((dir: string) => Promise<CommandResult>) | undefined,
   ): Promise<{ ok: true } | { ok: false; reason: 'conflict' | 'regression'; output: string }> {
     const job = this.lock.then(async () => {
-      const before = await this.head();
+      const before = await g.head(this.worktree.dir); // not this.head(): that waits for this very job
       const merged = await g.merge(this.worktree.dir, taskBranch, message);
       if (!merged.ok) return { ok: false as const, reason: 'conflict' as const, output: merged.output };
       if (verify) {
