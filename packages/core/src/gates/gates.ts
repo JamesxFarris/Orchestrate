@@ -48,8 +48,20 @@ export function runCommand(command: string, cwd: string, timeoutMs: number, sign
   });
 }
 
+/**
+ * A path that is safe to paste into a shell command on any platform: no spaces, quotes, `$`, `&`,
+ * `;`, `|`, `%`, globs or `..`, and no leading `-` (it would be read as a flag).
+ */
+export function isShellSafePath(p: string): boolean {
+  return /^[A-Za-z0-9_@./-]+$/.test(p) && !p.startsWith('-') && !p.split('/').includes('..');
+}
+
+/** The test command for a task's own test files. Plan validation already refuses unsafe paths; this refuses them again. */
 export function testFilesCommand(gates: GateConfig, files: readonly string[]): string {
-  return gates.testFiles ? gates.testFiles.replace('{files}', files.join(' ')) : gates.test;
+  if (!gates.testFiles) return gates.test;
+  const unsafe = files.find((f) => !isShellSafePath(f));
+  if (unsafe !== undefined) throw new Error(`refusing to run tests: unsafe test file path ${JSON.stringify(unsafe)}`);
+  return gates.testFiles.replace('{files}', () => files.join(' '));
 }
 
 export interface AuditInput {

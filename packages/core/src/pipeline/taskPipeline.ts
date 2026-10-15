@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { CodeReview, EscalationDecision, type RoleConfig, type TaskState } from '@orchestrate/shared';
-import { auditChanges, runCommand, testFilesCommand } from '../gates/gates.ts';
+import { auditChanges, runCommand, testFilesCommand, type CommandResult } from '../gates/gates.ts';
 import * as g from '../git/git.ts';
 import {
   implementerPrompt,
@@ -89,7 +89,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
           write: writeScope,
           read: [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS],
           protected: c.testFiles,
-          bash: [...commands.map(commandPattern), GIT_READONLY],
+          bash: [...commands.map(commandPattern), ...GIT_READONLY],
         },
         headline: attempt ? `Retry ${attempt}: ${c.title}` : `Implementing: ${c.title}`,
       });
@@ -181,25 +181,30 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       // -------------------------------------------------------------- lead review
       ctx.setTaskStatus(task, 'review');
       ctx.handoff(task, implementer.id, lead.id, 'code review');
-      const reviewRun = await ctx.callAgent({
-        role: lead,
-        activity: 'reviewing',
-        task,
-        cwd: wt.dir,
-        system: leadReviewSystem(org, lead),
-        prompt: leadReviewPrompt(c, await g.diffText(wt.dir, base), res.submitSummary, gateNotes),
-        tools: READ_TOOLS,
-        guard: { write: [], read: ['**'], protected: [], bash: [] },
-        schema: outputSchema(CodeReview),
-        headline: `Reviewing: ${c.title}`,
-      });
-      const review = parseStructured(CodeReview, reviewRun);
+      const reviewPrompt = leadReviewPrompt(c, await g.diffText(wt.dir, base), res.submitSummary, gateNotes);
+      const askLead = async (unreadable?: string) =>
+        parseStructured(
+          CodeReview,
+          await ctx.callAgent({
+            role: lead,
+            activity: 'reviewing',
+            task,
+            cwd: wt.dir,
+            system: leadReviewSystem(org, lead),
+            prompt: unreadable ? `${reviewPrompt}\n\nYour previous reply could not be read as a review (${unreadable}). Review the same diff and reply with only the structured verdict.` : reviewPrompt,
+            tools: READ_TOOLS,
+            guard: { write: [], read: ['**'], protected: [], bash: [] },
+            schema: outputSchema(CodeReview),
+            headline: unreadable ? `Re-reviewing: ${c.title}` : `Reviewing: ${c.title}`,
+          }),
+        );
+      // A review nobody can read is not an approval: ask once more, then hand it to a person.
+      let review = await askLead();
       if (!review.ok) {
-        // Gates are the hard bar; an unreadable review does not block a verified change.
-        ctx.bus.emit({ type: 'agent.log', runId: ctx.run.id, agentId: lead.id, taskId: c.id, kind: 'error', text: `review unreadable (${review.error}); gates passed, approving` });
-        approved = true;
-        break;
+        ctx.bus.emit({ type: 'agent.log', runId: ctx.run.id, agentId: lead.id, taskId: c.id, kind: 'error', text: `review unreadable (${review.error}); asking again` });
+        review = await askLead(review.error);
       }
+      if (!review.ok) return escalate(`the lead's review could not be read twice (${review.error}). Gates passed, but nobody has reviewed this change.`);
       ctx.bus.emit({ type: 'code.review', runId: ctx.run.id, taskId: c.id, roleId: lead.id, review: review.value });
       if (review.value.verdict === 'approve') {
         approved = true;
@@ -255,11 +260,18 @@ async function redPhase(
       system: qaSystem(org, qa, c, cmd),
       prompt: feedback.length ? `Your previous tests were rejected. Fix:\n- ${feedback.join('\n- ')}` : 'Write the failing acceptance tests for this contract.',
       tools: BUILD_TOOLS,
-      guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), GIT_READONLY] },
+      guard: { write: c.testFiles, read: ['**'], protected: [], bash: [commandPattern(cmd), ...GIT_READONLY] },
       headline: `Writing acceptance tests: ${c.title}`,
     });
     if (res.outcome === 'blocked' || res.outcome === 'scope_change') {
       return { ok: false, detail: `QA could not write tests: ${res.blocker ?? res.scopeRequest?.reason}` };
+    }
+    // A session cut short leaves half-written tests, which would fail for the wrong reason and pass as red.
+    if (res.outcome === 'budget' || res.outcome === 'error') {
+      ctx.gate(task, 'audit', false, `QA session ended early (${res.outcome}); discarding its tests`);
+      await g.resetHard(dir, base);
+      feedback = [`Your previous session ended before you finished (${res.outcome === 'budget' ? 'it ran out of turns or budget' : 'it stopped with an error'}). Write complete tests, run them once, and call submit_work.`];
+      continue;
     }
 
     await g.commitAll(dir, `test(${c.id}): acceptance tests [attempt ${attempt + 1}]`, org.project.linkDirs);
@@ -276,14 +288,28 @@ async function redPhase(
 
     const r = await runCommand(cmd, dir, org.gates.timeoutMs, ctx.signal);
     ctx.throwIfCancelled();
-    // Red means the new tests fail before implementation. Passing tests prove nothing.
-    ctx.gate(task, 'red', !r.ok, r.ok ? 'tests PASS without implementation — they do not test the new behaviour' : r.output);
-    if (r.ok) {
+    // Red means the new tests fail before implementation. Passing tests prove nothing, and neither
+    // do tests that never ran: a hang, or a syntax error in the test file itself. ("Cannot find
+    // module" is the normal red for a module that doesn't exist yet, so it counts.)
+    const why = redRejection(r, c.testFiles);
+    ctx.gate(task, 'red', !why, why ?? r.output);
+    if (why) {
       await g.resetHard(dir, base);
-      feedback = ['Your tests pass before anything is implemented, so they do not exercise the new behaviour. Assert the acceptance criteria against the code that will be written.'];
+      feedback = [why];
       continue;
     }
     return { ok: true, sha: await g.head(dir) };
   }
   return { ok: false, detail: `QA failed to produce valid failing tests after ${org.policy.maxRetries + 1} attempts: ${feedback.join('; ')}` };
+}
+
+/** Why a test run does not count as "red" (failing first), or undefined when it does. */
+export function redRejection(r: CommandResult, testFiles: readonly string[]): string | undefined {
+  if (r.ok) return 'Your tests pass before anything is implemented, so they do not exercise the new behaviour. Assert the acceptance criteria against the code that will be written.';
+  if (r.timedOut) return 'The test command timed out, so the tests never reported a result. Make them finish quickly (no waiting on servers, timers or input) and assert the acceptance criteria.';
+  const own = testFiles.map((f) => f.split('/').pop()!);
+  if (/SyntaxError/.test(r.output) && own.some((name) => r.output.includes(name))) {
+    return `Your test file does not parse (SyntaxError), so it failed without testing anything. Fix the syntax; it should fail only because the feature is missing.\n${r.output.slice(-800)}`;
+  }
+  return undefined;
 }

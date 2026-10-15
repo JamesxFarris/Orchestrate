@@ -2,7 +2,9 @@ import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OrchestrateEvent, Plan } from '@orchestrate/shared';
+import type { CommandResult } from '../src/gates/gates.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
+import { redRejection } from '../src/pipeline/taskPipeline.ts';
 import { FakeRunner, type FakeAgentContext, type FakeReply } from '../src/runner/fakeRunner.ts';
 import { Store } from '../src/store/store.ts';
 import { codeTask, fixtureOrg, makeFixtureRepo, planOf, sh, sumImpl, sumTest } from './helpers.ts';
@@ -20,7 +22,7 @@ function phaseOf(ctx: FakeAgentContext): Phase {
   return 'implement';
 }
 
-type Script = Partial<Record<Phase, (ctx: FakeAgentContext) => FakeReply | void>>;
+type Script = Partial<Record<Phase, (ctx: FakeAgentContext) => Promise<FakeReply | void> | FakeReply | void>>;
 
 /** Well-behaved team for the "sum" feature; individual phases can be overridden per test. */
 function team(plan: Plan | ((ctx: FakeAgentContext) => Plan), script: Script = {}) {
@@ -244,6 +246,117 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     expect(planCalls[0]!.prompt).toContain('[Architect] rename the task');
   });
 
+  it('discards tests from a QA session that ran out of budget, and asks again', async () => {
+    const env = setup(
+      team(sumPlan, {
+        qa: (ctx) => {
+          if (ctx.attempt === 1) {
+            ctx.write('test/sum.test.js', "import { test } from 'node:test';\n// TODO"); // half-written
+            return { ended: 'budget' };
+          }
+          ctx.write('test/sum.test.js', sumTest);
+          ctx.submit('tests written');
+        },
+      }),
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+    const runner = (env.orch as unknown as { runner: FakeRunner }).runner;
+    expect(runner.calls.find((c) => c.prompt.includes('ended before you finished'))).toBeDefined();
+  });
+
+  it('does not count a test file that fails to parse as "failing first"', async () => {
+    const env = setup(
+      team(sumPlan, {
+        qa: (ctx) => {
+          ctx.write('test/sum.test.js', ctx.attempt === 1 ? 'import { test } from "node:test";\ntest("sum", () => {' : sumTest);
+          ctx.submit('tests written');
+        },
+      }),
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+    const red = env.events.filter((e) => e.type === 'gate.result' && e.gate === 'red');
+    expect(red.map((e) => e.type === 'gate.result' && e.ok)).toEqual([false, true]);
+  });
+
+  it('never approves a change because the lead review was unreadable: asks again, then escalates', async () => {
+    const env = setup(team(sumPlan, { review: () => ({ text: 'looks fine I guess' }) }));
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('escalated');
+    expect(run.tasks[0]!.detail).toMatch(/could not be read twice/);
+    const runner = (env.orch as unknown as { runner: FakeRunner }).runner;
+    expect(runner.calls.filter((c) => c.prompt.includes('could not be read as a review'))).toHaveLength(1);
+    expect(showOnBranch(env.repo, `orch/run-${run.id}`, 'src/sum.js')).toBeUndefined();
+  });
+
+  it('accepts a lead review that comes back readable the second time', async () => {
+    const env = setup(team(sumPlan, { review: (ctx) => (ctx.attempt === 1 ? { text: 'oops' } : { structured: { verdict: 'approve', notes: 'LGTM', issues: [] } }) }));
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.tasks[0]!.status).toBe('merged');
+  });
+
+  it('stops for a person when a Tech Circle verdict is unreadable, even with auto-approve', async () => {
+    const env = setup(team(sumPlan, { circle: (ctx) => (ctx.inv.agentId === 'arch' ? { text: 'hmm' } : { structured: { verdict: 'approve', concerns: [], requiredChanges: [] } }) }));
+    const a = env.orch.submit('add sum', { autoApprove: true });
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    expect(env.orch.get(a.id)!.detail).toMatch(/Unreviewed: .*Architect/);
+    expect(env.orch.approve(a.id)).toBe(true);
+    expect((await env.orch.wait(a.id)).status).toBe('completed');
+  });
+
+  it('stops for a person, concerns visible, when the circle still wants changes after the last round', async () => {
+    const env = setup(team(sumPlan, { circle: () => ({ structured: { verdict: 'revise', concerns: ['naming'], requiredChanges: ['rename the task'] } }) }));
+    const a = env.orch.submit('add sum');
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    expect(env.orch.get(a.id)!.detail).toMatch(/still had concerns.*rename the task/);
+    env.orch.cancel(a.id);
+    expect((await env.orch.wait(a.id)).status).toBe('cancelled');
+  });
+
+  it('after a restart, marks runs that were going as failed and removes their worktrees', async () => {
+    let release!: () => void;
+    const stuck = new Promise<void>((r) => (release = r));
+    let implementing = false;
+    const env = setup(
+      team(sumPlan, {
+        implement: async (ctx) => {
+          implementing = true;
+          await stuck; // the daemon "dies" while the implementer works
+          ctx.submit('late');
+        },
+      }),
+    );
+    const a = env.orch.submit('add sum');
+    await waitFor(() => implementing);
+    const worktrees = () => sh(env.repo, 'worktree', 'list').split('\n').filter((l) => l.includes(a.id)).length;
+    expect(worktrees()).toBe(2); // the integration worktree and the task's
+
+    // a new daemon on the same database
+    const restarted = new Orchestrator({ org: fixtureOrg(), runner: team(sumPlan), repoRoot: env.repo, workDir: env.work, store: env.store });
+    expect(await restarted.recoverInterrupted()).toEqual([a.id]);
+    const run = restarted.get(a.id)!;
+    expect(run.status).toBe('failed');
+    expect(run.detail).toMatch(/daemon stopped while this run was executing/);
+    expect(run.tasks.every((t) => t.status === 'skipped')).toBe(true);
+    expect(worktrees()).toBe(0);
+    expect(sh(env.repo, 'branch', '--list', `orch/${a.id}/*`)).toBe('');
+    expect(sh(env.repo, 'branch', '--list', `orch/run-${a.id}`)).not.toBe(''); // kept: it may hold merged work
+    expect(await restarted.recoverInterrupted()).toEqual([]); // only once
+
+    env.orch.cancel(a.id);
+    release();
+    await env.orch.wait(a.id);
+  });
+
+  it('shutdown cancels active runs and waits for them to finish cleaning up', async () => {
+    const env = setup(team(sumPlan), { policy: { requireHumanApproval: true, maxRetries: 1, maxChangedLines: 200, circleRevisionRounds: 0, maxParallel: 1 } });
+    const a = env.orch.submit('add sum');
+    await waitFor(() => env.orch.get(a.id)?.status === 'awaiting_approval');
+    await env.orch.shutdown();
+    expect(env.store.getRun(a.id)!.status).toBe('cancelled');
+  });
+
   it('waits at the human gate until approved, and can be cancelled there', async () => {
     const env = setup(team(sumPlan), { policy: { requireHumanApproval: true, maxRetries: 1, maxChangedLines: 200, circleRevisionRounds: 0, maxParallel: 1 } });
     const a = env.orch.submit('add sum');
@@ -313,5 +426,21 @@ describe('shipping and progression (real git)', () => {
   it('refuses to ship a run that has not completed', async () => {
     const env = setup(team(sumPlan));
     expect(await env.orch.ship('no-such-run')).toMatchObject({ ok: false, reason: 'not-ready' });
+  });
+});
+
+describe('redRejection: what counts as tests failing first', () => {
+  const run = (over: Partial<CommandResult>): CommandResult => ({ ok: false, code: 1, output: '', timedOut: false, ...over });
+  const files = ['test/sum.test.js'];
+  it('accepts tests that fail because the feature is missing', () => {
+    expect(redRejection(run({ output: 'AssertionError: expected 3, got undefined' }), files)).toBeUndefined();
+    expect(redRejection(run({ output: "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '../src/sum.js'" }), files)).toBeUndefined();
+    // a syntax error somewhere else is the code's problem, not the test's
+    expect(redRejection(run({ output: 'SyntaxError: Unexpected token in src/legacy.js' }), files)).toBeUndefined();
+  });
+  it('rejects passing tests, a timeout, and a test file that does not parse', () => {
+    expect(redRejection(run({ ok: true, code: 0 }), files)).toMatch(/pass before anything is implemented/);
+    expect(redRejection(run({ timedOut: true, code: null }), files)).toMatch(/timed out/);
+    expect(redRejection(run({ output: 'test/sum.test.js:3\nSyntaxError: Unexpected end of input' }), files)).toMatch(/does not parse/);
   });
 });

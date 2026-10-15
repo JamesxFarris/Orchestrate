@@ -17,6 +17,8 @@ export interface Backend {
   /** Record a run as shipped by hand, for merges detection cannot see (squash, rebase). */
   markShipped(runId: string): Promise<boolean>;
   progress(): ProgressSnapshot;
+  /** Cancel active runs and wait (bounded) for them to record their status and clean up. */
+  shutdown(): Promise<void>;
 }
 
 export function liveBackend(orch: Orchestrator, store: Store): Backend {
@@ -33,5 +35,9 @@ export function liveBackend(orch: Orchestrator, store: Store): Backend {
     ship: (id) => orch.ship(id),
     markShipped: (id) => orch.markShipped(id),
     progress: () => orch.progress(),
+    shutdown: async () => {
+      await orch.shutdown();
+      store.close();
+    },
   };
 }

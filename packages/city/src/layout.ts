@@ -35,6 +35,9 @@ export interface CityLayout {
 export const HQ_ACCENT = PALETTE.sand;
 export const PLATFORM_RADIUS = 125;
 
+/** Radius of a district's paved plaza (its towers stand on it). */
+export const districtPlazaRadius = (size: number) => size + 3;
+
 
 const CIRCLE_RADIUS = 22;
 const DISTRICT_RADIUS = 64;

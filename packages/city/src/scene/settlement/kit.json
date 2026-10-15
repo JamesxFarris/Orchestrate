@@ -1,0 +1,78 @@
+{
+  "scale": 1.4,
+  "houses": {
+    "cottage": {
+      "width": 2.8,
+      "depth": 3.18,
+      "height": 2.8,
+      "floors": 1
+    },
+    "croft": {
+      "width": 3.18,
+      "depth": 2.87,
+      "height": 2.35,
+      "floors": 1
+    },
+    "longhouse": {
+      "width": 4.2,
+      "depth": 3.18,
+      "height": 2.8,
+      "floors": 1
+    },
+    "townhouse": {
+      "width": 3.18,
+      "depth": 2.87,
+      "height": 3.75,
+      "floors": 2
+    },
+    "hall": {
+      "width": 4.34,
+      "depth": 3.18,
+      "height": 4.2,
+      "floors": 2
+    },
+    "tallhouse": {
+      "width": 3.2,
+      "depth": 2.87,
+      "height": 4.47,
+      "floors": 2
+    }
+  },
+  "props": {
+    "fountain": {
+      "width": 4.2,
+      "depth": 4.2,
+      "height": 1.01
+    },
+    "lantern": {
+      "width": 0.35,
+      "depth": 0.36,
+      "height": 2.49
+    },
+    "cart": {
+      "width": 1.34,
+      "depth": 2.01,
+      "height": 0.8
+    },
+    "stall_green": {
+      "width": 1.6,
+      "depth": 1.6,
+      "height": 1.98
+    },
+    "stall_red": {
+      "width": 1.6,
+      "depth": 1.6,
+      "height": 1.98
+    },
+    "fence": {
+      "width": 0.11,
+      "depth": 1.4,
+      "height": 0.53
+    },
+    "hedge": {
+      "width": 0.35,
+      "depth": 1.4,
+      "height": 0.35
+    }
+  }
+}

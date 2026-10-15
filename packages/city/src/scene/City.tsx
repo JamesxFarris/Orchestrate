@@ -11,8 +11,9 @@ import { Building } from './Building.tsx';
 import { CAMERA_LIMITS, CameraRig } from './CameraRig.tsx';
 import { Ground } from './Ground.tsx';
 import { Links } from './Links.tsx';
-import { Landmarks, PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
+import { PathPulses, Scenery, TaskTrees } from './park/Park.tsx';
 import { buildParkLayout } from './park/parkLayout.ts';
+import { Settlements } from './settlement/Settlements.tsx';
 import { WaveDriver } from './park/wave.ts';
 import { TechCircle } from './TechCircle.tsx';
 import { Trails } from './Trails.tsx';
@@ -140,7 +141,9 @@ export function City() {
           </group>
           <Scenery park={park} />
           <TaskTrees park={park} />
-          <Landmarks park={park} />
+          <Suspense fallback={null}>
+            <Settlements layout={layout} />
+          </Suspense>
           {!off('pulses') && <PathPulses park={park} />}
           <Suspense fallback={null}>
             {layout.buildings.map((b) => (

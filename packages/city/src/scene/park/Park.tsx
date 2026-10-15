@@ -2,10 +2,10 @@ import { Html } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import type { RunState, TaskState, TaskStatus } from '@orchestrate/shared';
+import type { TaskState, TaskStatus } from '@orchestrate/shared';
 import { PALETTE } from '../../palette.ts';
 import { TASK_COLOR, TASK_LABEL, useCity, type Trail } from '../../store.ts';
-import { LANDMARK_CAP, rng, type ParkLayout } from './parkLayout.ts';
+import { rng, type ParkLayout } from './parkLayout.ts';
 import { foliageMaterial, TREE, trunkMaterial } from './treeKit.ts';
 
 // ---------------------------------------------------------------- scenery
@@ -193,75 +193,6 @@ export function TaskTrees({ park }: { park: ParkLayout }) {
     <>
       {placed.map(({ task, at }) => (
         <TaskTree key={`${run!.id}:${task.contract.id}`} task={task} at={at} />
-      ))}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- history
-
-const FINISHED = new Set(['completed', 'failed']);
-
-/**
- * Each finished run leaves one landmark tree in every district it touched: lush if the squad's work
- * merged, weathered if it escalated. Capped per district — after the cap, the grove matures
- * (bigger trees) instead of growing more crowded.
- */
-export function Landmarks({ park }: { park: ParkLayout }) {
-  const runs = useCity((s) => s.runs);
-  const currentRunId = useCity((s) => s.currentRunId);
-  const lush = useMemo(() => foliageMaterial(PALETTE.canopy[2]), []);
-  const weathered = useMemo(() => foliageMaterial(PALETTE.weathered), []);
-  const gl = useThree((s) => s.gl);
-
-  const trees = useMemo(() => {
-    const bySquad = new Map<string, { run: RunState; healthy: boolean }[]>();
-    const finished = Object.values(runs)
-      .filter((r) => r.id !== currentRunId && FINISHED.has(r.status))
-      .sort((a, b) => a.createdAt - b.createdAt);
-    for (const run of finished) {
-      for (const squad of new Set(run.tasks.map((t) => t.contract.squad))) {
-        const mine = run.tasks.filter((t) => t.contract.squad === squad);
-        const healthy = mine.every((t) => t.status === 'merged');
-        const list = bySquad.get(squad) ?? [];
-        list.push({ run, healthy });
-        bySquad.set(squad, list);
-      }
-    }
-    const out: { key: string; at: THREE.Vector2; scale: number; healthy: boolean; conifer: boolean }[] = [];
-    for (const [squad, list] of bySquad) {
-      const slots = park.landmarkSlots.get(squad) ?? [];
-      const maturity = 1 + 0.6 * Math.min(1, Math.max(0, list.length - LANDMARK_CAP) / 36);
-      list.slice(-LANDMARK_CAP).forEach((entry, i) => {
-        const rand = rng(entry.run.createdAt % 100000);
-        out.push({
-          key: `${squad}:${entry.run.id}`,
-          at: slots[i]!,
-          scale: (1.45 + rand() * 0.35) * maturity,
-          healthy: entry.healthy,
-          conifer: rand() < 0.35,
-        });
-      });
-    }
-    return out;
-  }, [runs, currentRunId, park]);
-
-  useEffect(() => {
-    gl.shadowMap.needsUpdate = true;
-  }, [gl, trees]);
-
-  return (
-    <>
-      {trees.map((t) => (
-        <group key={t.key} position={[t.at.x, 0, t.at.y]} scale={t.scale}>
-          <mesh geometry={TREE.trunk} material={trunkMaterial} castShadow raycast={() => null} />
-          <mesh
-            geometry={t.healthy ? (t.conifer ? TREE.conifer : TREE.broadleaf) : TREE.bare}
-            material={t.healthy ? lush : weathered}
-            castShadow
-            raycast={() => null}
-          />
-        </group>
       ))}
     </>
   );

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import { rmdirSync } from 'node:fs';
 import path from 'node:path';
-import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -20,6 +21,9 @@ import { computeProgress, finishedAt } from './progress/progress.ts';
 import { READ_TOOLS, type AgentRunner } from './runner/types.ts';
 import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
 import type { ShipRecord, Store } from './store/store.ts';
+
+const FINISHED = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
+const TASK_FINISHED = new Set<TaskState['status']>(['merged', 'failed', 'escalated', 'skipped']);
 
 export interface OrchestratorOptions {
   org: Org;
@@ -197,6 +201,60 @@ export class Orchestrator {
     return true;
   }
 
+  /**
+   * Cancel every active run and wait (up to `timeoutMs`) until each has recorded its status and
+   * removed its worktrees. Without the wait, a stop left runs "executing" forever and worktrees on disk.
+   */
+  async shutdown(timeoutMs = 20_000): Promise<void> {
+    const active = [...this.controllers.keys()];
+    for (const id of active) this.cancel(id, 'the daemon is shutting down');
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<void>((r) => (timer = setTimeout(r, timeoutMs)));
+    await Promise.race([Promise.allSettled(active.map((id) => this.wait(id))), limit]);
+    clearTimeout(timer);
+  }
+
+  /**
+   * After a restart, runs the store still shows as going have nothing behind them: approvals and
+   * cancellation live in memory, so they could never finish, be approved or be cancelled. Mark them
+   * failed and remove their worktrees and task branches (the integration branch is kept, in case it
+   * holds work). Call once at startup, before taking requests. Returns the recovered run ids.
+   */
+  async recoverInterrupted(): Promise<string[]> {
+    const recovered: string[] = [];
+    for (const run of this.store?.listRuns(Number.MAX_SAFE_INTEGER) ?? []) {
+      if (FINISHED.has(run.status) || this.controllers.has(run.id)) continue;
+      const was = run.status.replace('_', ' ');
+      for (const t of run.tasks) if (!TASK_FINISHED.has(t.status)) t.status = 'skipped';
+      this.setStatus(run, 'failed', `The daemon stopped while this run was ${was}. Submit it again to retry.`);
+      await this.removeRunWorktrees(run.id).catch((e) => console.error(`[run ${run.id}] could not remove worktrees:`, e));
+      await this.cleanupBranches(run.id).catch(() => undefined);
+      recovered.push(run.id);
+    }
+    return recovered;
+  }
+
+  /** Remove the git worktrees a run left under its work folder, never deleting through linked dirs. */
+  private async removeRunWorktrees(runId: string): Promise<void> {
+    const runDir = path.join(this.workDir, runId);
+    const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const out = await g.git(this.repoRoot, ['worktree', 'list', '--porcelain']);
+    for (const block of out.split(/\n\s*\n/)) {
+      const dir = /^worktree (.+)$/m.exec(block)?.[1];
+      if (!dir) continue;
+      const abs = path.resolve(dir);
+      if (!same(path.dirname(abs), runDir)) continue;
+      const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? '';
+      await g.removeWorktree(this.repoRoot, { dir: abs, branch }, this.org.project.linkDirs);
+    }
+    await g.git(this.repoRoot, ['worktree', 'prune']).catch(() => undefined);
+    try {
+      rmdirSync(runDir); // only if empty: anything left is not ours to delete blindly
+    } catch {
+      // not empty or already gone
+    }
+  }
+
   get(runId: string): RunState | undefined {
     return this.runs.get(runId) ?? this.store?.getRun(runId);
   }
@@ -226,17 +284,19 @@ export class Orchestrator {
       signal,
     );
     try {
-      const plan = await this.planWithCircle(ctx);
-      if (!plan) {
-        this.setStatus(run, 'failed', run.detail ?? 'no acceptable plan');
+      const planned = await this.planWithCircle(ctx);
+      if (!planned.plan) {
+        this.setStatus(run, 'failed', planned.reason);
         return run;
       }
+      const { plan, needsHuman } = planned;
       run.plan = plan;
       run.tasks = plan.tasks.map((contract) => ({ contract, status: 'pending', attempts: 0 }));
       this.save(run);
 
-      if (this.org.policy.requireHumanApproval && !opts.autoApprove) {
-        this.setStatus(run, 'awaiting_approval');
+      // auto-approve skips the gate only for a plan the Tech Circle actually approved
+      if (needsHuman || (this.org.policy.requireHumanApproval && !opts.autoApprove)) {
+        this.setStatus(run, 'awaiting_approval', needsHuman);
         await new Promise<void>((resolve, reject) => this.approvals.set(run.id, { resolve, reject }));
       }
 
@@ -262,13 +322,18 @@ export class Orchestrator {
     return run;
   }
 
-  /** Master drafts; deterministic validation and the Tech Circle push back; at most N revision rounds. */
-  private async planWithCircle(ctx: RunContext): Promise<Plan | undefined> {
+  /**
+   * Master drafts; deterministic validation and the Tech Circle push back; at most N revision rounds.
+   * `needsHuman` says why a person must approve the plan even when the run is auto-approved: a
+   * reviewer whose verdict could not be read, or concerns left after the last round.
+   */
+  private async planWithCircle(ctx: RunContext): Promise<{ plan: Plan; needsHuman?: string } | { plan?: undefined; reason: string }> {
     const { org, run } = ctx;
     const master = org.master();
     let previous: Plan | undefined;
     let feedback: string[] = [];
     let lastValid: Plan | undefined;
+    let unread: string[] = [];
 
     for (let round = 0; round <= org.policy.circleRevisionRounds; round++) {
       this.setStatus(run, 'planning', round ? `revision ${round}` : undefined);
@@ -301,25 +366,36 @@ export class Orchestrator {
       // -------------------------------------------------------------- Tech Circle
       const involved = new Set(plan.tasks.map((t) => t.squad));
       const reviewers = org.circle().filter((r) => r.kind !== 'master' && (!r.squad || involved.has(r.squad)));
-      if (reviewers.length === 0) return plan;
+      if (reviewers.length === 0) return { plan };
       this.setStatus(run, 'reviewing', `round ${round + 1}`);
       this.bus.emit({ type: 'circle.convened', runId: run.id, members: [master.id, ...reviewers.map((r) => r.id)] });
-      const reviews = await Promise.all(
-        reviewers.map(async (role) => {
-          const r = await ctx.callAgent({
+      const ask = async (role: RoleConfig, unreadable?: string) =>
+        parseStructured(
+          CircleReview,
+          await ctx.callAgent({
             role,
             activity: 'reviewing',
             cwd: this.repoRoot,
             system: circleReviewSystem(org, role),
-            prompt: circleReviewPrompt(run.prompt, plan),
+            prompt: unreadable
+              ? `${circleReviewPrompt(run.prompt, plan)}
+
+Your previous reply could not be read as a review (${unreadable}). Reply with only the structured verdict.`
+              : circleReviewPrompt(run.prompt, plan),
             tools: READ_TOOLS,
             guard: READ_ONLY,
             schema: outputSchema(CircleReview),
             headline: 'Tech Circle: reviewing the plan',
-          });
-          const p = parseStructured(CircleReview, r);
-          // An unreadable review abstains rather than blocking the circle.
-          const review: CircleReview = p.ok ? p.value : { verdict: 'approve', concerns: [`(review unreadable: ${p.error})`], requiredChanges: [] };
+          }),
+        );
+      unread = [];
+      const reviews = await Promise.all(
+        reviewers.map(async (role) => {
+          let p = await ask(role);
+          if (!p.ok) p = await ask(role, p.error);
+          // Still unreadable: not an approval. It doesn't block the others, but a person must look.
+          if (!p.ok) unread.push(`${roleName(role, org.squads)} (${p.error})`);
+          const review: CircleReview = p.ok ? p.value : { verdict: 'revise', concerns: [`(review unreadable: ${p.error})`], requiredChanges: [] };
           this.bus.emit({ type: 'circle.review', runId: run.id, roleId: role.id, review });
           return { role, review };
         }),
@@ -327,19 +403,18 @@ export class Orchestrator {
       const changes = reviews.flatMap(({ role, review }) =>
         review.verdict === 'revise' ? review.requiredChanges.map((c) => `[${roleName(role, org.squads)}] ${c}`) : [],
       );
-      const approved = changes.length === 0;
+      const approved = changes.length === 0 && unread.length === 0;
       this.bus.emit({ type: 'circle.adjourned', runId: run.id, approved });
-      if (approved) return plan;
+      if (changes.length === 0) return unread.length ? { plan, needsHuman: `Unreviewed: the Tech Circle could not read the verdict of ${unread.join(', ')}.` } : { plan };
       feedback = changes;
     }
 
     if (lastValid) {
-      // Out of rounds but structurally sound: let the human gate decide with the concerns visible.
-      run.detail = `Tech Circle still had concerns after ${org.policy.circleRevisionRounds} revisions: ${feedback.join(' | ')}`;
-      return lastValid;
+      // Out of rounds but structurally sound: a person decides, with the concerns in front of them.
+      const unreviewed = unread.length ? ` Also unreviewed by ${unread.join(', ')}.` : '';
+      return { plan: lastValid, needsHuman: `Tech Circle still had concerns after ${org.policy.circleRevisionRounds} revisions: ${feedback.join(' | ')}.${unreviewed}` };
     }
-    run.detail = `no valid plan after ${org.policy.circleRevisionRounds + 1} attempts: ${feedback.join(' | ')}`;
-    return undefined;
+    return { reason: `no valid plan after ${org.policy.circleRevisionRounds + 1} attempts: ${feedback.join(' | ')}` };
   }
 
   private async executeTasks(ctx: RunContext, baseRef: string): Promise<void> {
@@ -347,10 +422,11 @@ export class Orchestrator {
     const integration = new Integration(this.repoRoot, run.id, this.workDir, org.project.linkDirs);
     ctx.integration = integration;
     run.integrationBranch = integration.branch;
-    await integration.init(baseRef, org.gates, ctx.signal);
 
     const running = new Map<string, Promise<void>>();
     try {
+      // inside the try, so a failed or cancelled setup still removes the integration worktree
+      await integration.init(baseRef, org.gates, ctx.signal);
       for (;;) {
         ctx.throwIfCancelled();
         const { ready, blocked } = schedule(run.tasks, org.policy.maxParallel);

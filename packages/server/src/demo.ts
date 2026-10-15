@@ -84,6 +84,10 @@ export class DemoBackend implements Backend {
     return true;
   }
 
+  async shutdown(): Promise<void> {
+    for (const id of this.controllers.keys()) this.cancel(id);
+  }
+
   get(runId: string) {
     return this.runs.get(runId);
   }

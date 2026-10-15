@@ -6,6 +6,7 @@ import { circleReviewSystem } from '../src/prompts.ts';
 import { Org, TeamConfigError } from '../src/org/org.ts';
 import { schedule, topoOrder } from '../src/plan/dag.ts';
 import { validatePlan } from '../src/plan/validatePlan.ts';
+import { isShellSafePath, testFilesCommand } from '../src/gates/gates.ts';
 
 const preset = path.resolve(import.meta.dirname, '../../../presets/corpsegrinder.team.yaml');
 const org = Org.load(preset);
@@ -138,6 +139,20 @@ describe('validatePlan', () => {
     const problems = validatePlan(plan(task({ id: 'a', dependsOn: ['b'] }), task({ id: 'b', dependsOn: ['a'] }), task({ id: 'c' }), task({ id: 'c' })), org).join('\n');
     expect(problems).toMatch(/duplicate task id/);
     expect(problems).toMatch(/dependency cycle/);
+  });
+});
+
+describe('testFilesCommand', () => {
+  const gates = { test: 'npm test', testFiles: 'npx vitest run {files}', timeoutMs: 1000 };
+  it('fills in plain paths', () => {
+    expect(testFilesCommand(gates, ['tests/a.test.ts', 'tests/b.test.ts'])).toBe('npx vitest run tests/a.test.ts tests/b.test.ts');
+  });
+  it('refuses unsafe paths even if plan validation was bypassed', () => {
+    expect(() => testFilesCommand(gates, ['tests/a.test.ts & calc'])).toThrow(/unsafe test file path/);
+    expect(() => testFilesCommand(gates, ['--config=evil.js'])).toThrow(/unsafe/);
+  });
+  it("refuses $& and $' in paths, which String.replace would expand", () => {
+    for (const f of ['tests/$&.test.ts', "tests/$'.test.ts"]) expect(isShellSafePath(f)).toBe(false);
   });
 });
 

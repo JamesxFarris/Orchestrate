@@ -102,6 +102,10 @@ At runtime the city restyles those materials:
 - **Trim:** squad accent.
 - **Glass:** reflective, lighting up floor by floor in the agent's activity color.
 
+Settlement houses and props come from Kenney's [Fantasy Town Kit](https://kenney.nl/assets/fantasy-town-kit) (CC0). The kit is single wall and roof tiles, so [tools/build-settlement.mjs](tools/build-settlement.mjs) assembles six houses from them (cottage to two-storey hall) and writes `packages/city/public/models/settlement.glb` plus `kit.json` with each model's size. Each house has a body mesh and a roof mesh, so only the roof takes the squad colour. To rebuild, unzip the kit into `Models/kenney_fantasy-town-kit/src` and run `node tools/build-settlement.mjs`. Credits are in [packages/city/public/models/CREDITS.md](packages/city/public/models/CREDITS.md).
+
+For a visual check without a person at the screen, `node tools/shot.mjs out.png --url "http://localhost:5173/?settle=5" --district 2 --zoom 6` screenshots the dev city with Playwright. It also takes `--overview`, `--angled` and `--orbit DEG`.
+
 The role-to-model mapping and target heights are set in [archetypes.ts](packages/city/src/scene/archetypes.ts).
 
 ### The park
@@ -115,20 +119,21 @@ The city sits in a park, and its trees and paths carry information:
   - A ring on the lawn shows its status, and clicking the tree opens the task.
 - **City glow:** when a run completes, a wave of green light rolls out from HQ across the lawn and trees.
 - **Path pulses:** every handoff sends light along the footpaths between the two agents' towers.
-- **History:** each finished run leaves one landmark tree in each district it touched, lush if the work merged and weathered if it escalated. There are at most 12 per district; after that the grove grows bigger rather than more crowded.
+- **Settlements:** shipped work grows each district on the side of its plaza facing away from HQ. A Hamlet has two cottages; a Village adds houses and a well; a Town adds cobbled lanes; a Borough adds a fountain; a City adds street lamps; every City level after that adds a few more houses. Roofs take the squad's colour. Houses keep their places as a district grows, and new ones rise out of the ground after you close the Harvest screen. Sizes come from the daemon's progress (`GET /api/progress`).
 
 ### Troubleshooting the city
 
-Add these query flags to the city's URL to turn individual effects off:
+Add these query flags to the city's URL to turn individual effects off, or to preview growth:
 
-| Flag | Turns off |
+| Flag | Effect |
 |---|---|
-| `?fx=0` | post-processing (bloom/vignette) |
-| `?sky=0` | sky dome |
-| `?env=0` | environment reflections |
-| `?links=0` | live data links |
-| `?aura=0` | light columns |
-| `?pulses=0` | path pulses |
+| `?fx=0` | turns off post-processing (bloom/vignette) |
+| `?sky=0` | turns off sky dome |
+| `?env=0` | turns off environment reflections |
+| `?links=0` | turns off live data links |
+| `?aura=0` | turns off light columns |
+| `?pulses=0` | turns off path pulses |
+| `?settle=5` | shows every district at that settlement level (1 Hamlet … 5 City, 6+ City II…) to preview growth |
 
 Flags combine, for example `?fx=0&aura=0`. A black canvas with only labels showing almost always means a shader produced NaN pixels, which bloom then spreads across the whole frame. Software renderers hide this, so check on a real GPU (D3D11/ANGLE).
 
