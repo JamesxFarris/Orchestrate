@@ -1,23 +1,20 @@
 // Builds the city's props from models the project owner supplied (in Models/, not committed):
 //   61-low_poly_tree.zip      -> the broad-leaf scenery tree
 //   73-street-lamp.zip        -> the street lamps along the footpaths
-//   72-low_poly_cars_set.zip  -> parked cars, a City-level upgrade
 //
 //   node tools/build-props.mjs
 //
 // Unzips each archive into Models/_extracted/ (gitignored), converts the OBJ files to glTF,
-// drops what the city does not need (ground planes, the cars' showroom floor), puts every model on
+// drops what the city does not need (the lamp's ground plane), puts every model on
 // the ground at the origin, and writes:
 //   packages/city/public/models/props.glb   one node per part: tree_trunk, tree_leaves, lamp_body,
-//                                           lamp_glass, car_01 … car_12
+//                                           lamp_glass
 //   packages/city/src/scene/props.json      sizes in world units, for the layout and its tests
-// Car textures are 1200 px of flat colour; with ImageMagick (`magick`) on PATH they are shrunk to
-// 128 px first, otherwise they are kept at full size (a warning says so).
 
 import { Document, NodeIO } from '@gltf-transform/core';
 import { dedup, prune, weld } from '@gltf-transform/functions';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import obj2gltf from 'obj2gltf';
 
@@ -25,10 +22,6 @@ const ROOT = join(import.meta.dirname, '..');
 const MODELS = join(ROOT, 'Models');
 const OUT_GLB = join(ROOT, 'packages/city/public/models/props.glb');
 const OUT_JSON = join(ROOT, 'packages/city/src/scene/props.json');
-
-/** Sizes in the city: a sedan is this long, and the others keep their proportions to it. */
-const SEDAN_LENGTH = 2.3;
-const TEXTURE_SIZE = 128;
 
 const io = new NodeIO();
 
@@ -166,35 +159,6 @@ const manifest = {};
   // where the light is: the scene puts a glow there, and points the arm over the path
   const g = bounds(glass);
   manifest.lamp = { height: 1, head: { x: r2((g.min[0] + g.max[0]) / 2), y: r2(g.min[1]) } };
-}
-
-// ---- cars: each on the ground at its own centre, one shared scale ------------------------------------
-{
-  const dir = extract('72-low_poly_cars_set');
-  const obj = find(dir, (n) => n.endsWith('.obj'));
-  const objDir = join(obj, '..');
-  // The material file names textures as if they sat beside it; they are in tex/. Shrink on the way.
-  const texDir = join(objDir, 'tex');
-  let shrunk = true;
-  for (const f of readdirSync(texDir).filter((n) => n.endsWith('.png'))) {
-    try {
-      execFileSync('magick', [join(texDir, f), '-resize', `${TEXTURE_SIZE}x${TEXTURE_SIZE}`, join(objDir, f)]);
-    } catch {
-      shrunk = false;
-      copyFileSync(join(texDir, f), join(objDir, f));
-    }
-  }
-  if (!shrunk) console.warn(`ImageMagick not found: car textures kept at full size`);
-  const parts = (await readObj(obj)).filter((p) => !/^Plane/i.test(p.mesh));
-  const sedan = parts.find((p) => p.mesh.startsWith('CAR_01'));
-  const scale = SEDAN_LENGTH / bounds([sedan]).size[0];
-  manifest.cars = {};
-  for (const p of parts) {
-    const n = Number(/(\d+)/.exec(p.mesh)?.[1]);
-    const name = `car_${String(n).padStart(2, '0')}`;
-    place([p], bounds([p]), scale);
-    manifest.cars[name] = emit(name, [p], materialFor(p.material, name));
-  }
 }
 
 await out.transform(weld(), dedup(), prune());

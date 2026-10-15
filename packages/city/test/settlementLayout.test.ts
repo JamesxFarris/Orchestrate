@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { districtPlazaRadius, PLATFORM_RADIUS, type District } from '../src/layout.ts';
-import { PROPS } from '../src/scene/props.ts';
-import { HOUSES, houseCount, houseSpots, inSettlement, layoutSettlement, type HouseSpot } from '../src/scene/settlement/settlementLayout.ts';
+
+import { HOUSES, houseCount, houseSpots, inSettlement, LANE_HALF_WIDTH, layoutSettlement, shapeOf, type HouseSpot } from '../src/scene/settlement/settlementLayout.ts';
 
 const district = (angle: number, size = 20.25, radius = 64): District => ({
   squad: { id: 'render', name: 'Render & UI', color: '#f2a541', mission: '' },
@@ -42,6 +42,9 @@ const overlap = (p: XZ[], q: XZ[]) =>
     }),
   );
 
+/** Angle around the district centre relative to its outward direction, in radians (-π..π). */
+const offsetRad = (p: XZ) => (offsetDeg(p) * Math.PI) / 180;
+
 describe('houseCount: a hamlet becomes a city', () => {
   it('follows the settlement ladder, then keeps adding a few per City level', () => {
     expect([1, 2, 3, 4, 5, 6, 7].map((level) => houseCount(level, 100))).toEqual([2, 6, 10, 15, 22, 25, 28]);
@@ -53,6 +56,7 @@ describe('houseCount: a hamlet becomes a city', () => {
 
 describe('houseSpots: where houses go', () => {
   const spots = houseSpots(d);
+  const shape = shapeOf(d);
 
   it('is deterministic, so a house never moves between visits', () => {
     expect(houseSpots(d)).toEqual(spots);
@@ -64,24 +68,14 @@ describe('houseSpots: where houses go', () => {
     expect(borough.slice(0, town.length)).toEqual(town);
   });
 
-  it('keeps houses apart, off the plaza, and on the side facing away from HQ', () => {
+  it("stays off the plaza, inside the district's own arc, and on the island", () => {
     const plaza = districtPlazaRadius(d.size);
-    for (const [i, h] of spots.entries()) {
+    for (const h of spots) {
       expect(dist(h, centre)).toBeGreaterThan(plaza + 3);
-      expect(Math.abs(offsetDeg(h))).toBeLessThanOrEqual(75);
+      expect(offsetRad(h)).toBeGreaterThanOrEqual(shape.from - 0.05);
+      expect(offsetRad(h)).toBeLessThanOrEqual(shape.to + 0.05);
       expect(Math.hypot(h.x, h.z)).toBeLessThan(PLATFORM_RADIUS - 7);
-      for (const other of spots.slice(i + 1)) expect(dist(h, other)).toBeGreaterThan(4.5);
     }
-  });
-
-  it('starts small and close: the first houses sit in the front row near the district axis', () => {
-    const plaza = districtPlazaRadius(d.size);
-    for (const h of spots.slice(0, 2)) {
-      expect(dist(h, centre)).toBeLessThan(plaza + 6);
-      expect(Math.abs(offsetDeg(h))).toBeLessThan(30);
-    }
-    for (const h of spots.slice(0, 2)) expect(HOUSES[h.house].floors).toBe(1);
-    expect(spots.slice(-6).some((h) => HOUSES[h.house].floors > 1)).toBe(true);
   });
 
   it("never lets two houses' footprints touch, even the largest models side by side", () => {
@@ -91,13 +85,21 @@ describe('houseSpots: where houses go', () => {
     }
   });
 
-  it('turns each house to face the plaza', () => {
+  it("starts small and close: the first houses sit in the front row near the town's middle", () => {
+    const plaza = districtPlazaRadius(d.size);
+    for (const h of spots.slice(0, 2)) {
+      expect(dist(h, centre)).toBeLessThan(plaza + 6);
+      expect(Math.abs(offsetRad(h) - shape.centre)).toBeLessThan(0.6);
+      expect(HOUSES[h.house].floors).toBe(1);
+    }
+    expect(spots.slice(-6).some((h) => HOUSES[h.house].floors > 1)).toBe(true);
+  });
+
+  it('turns each house to face the plaza, give or take a little', () => {
     for (const h of spots) {
-      // the house's local +z axis, rotated by rot about y, points back at the district centre
-      const fx = Math.sin(h.rot);
-      const fz = Math.cos(h.rot);
+      const front = { x: Math.sin(h.rot), z: Math.cos(h.rot) };
       const toCentre = { x: (d.x - h.x) / dist(h, centre), z: (d.z - h.z) / dist(h, centre) };
-      expect(fx * toCentre.x + fz * toCentre.z).toBeGreaterThan(0.99);
+      expect(front.x * toCentre.x + front.z * toCentre.z).toBeGreaterThan(Math.cos(0.11));
     }
   });
 
@@ -108,10 +110,33 @@ describe('houseSpots: where houses go', () => {
   });
 });
 
+describe('nothing mirrored: every district grows its own way', () => {
+  const squads = ['gameplay', 'engine', 'render', 'research'];
+  const of = (id: string) => ({ ...district(-Math.PI / 4), squad: { id, name: id, color: '#fff', mission: '' } });
+
+  it('leans each town to one side, by a different amount per district', () => {
+    const shapes = squads.map((id) => shapeOf(of(id)));
+    for (const s of shapes) expect(Math.abs(s.to + s.from)).toBeGreaterThan(0.01); // lopsided
+    expect(new Set(shapes.map((s) => s.from.toFixed(3))).size).toBe(squads.length);
+  });
+
+  it('spaces houses unevenly and puts the well and fountain off the axis', () => {
+    const front = houseSpots(d)
+      .filter((h) => dist(h, centre) < districtPlazaRadius(d.size) + 7)
+      .map((h) => offsetRad(h))
+      .sort((a, b) => a - b);
+    const gaps = front.slice(1).map((a, i) => a - front[i]!);
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(0.02);
+    const s = layoutSettlement(d, 9).features;
+    expect(Math.abs(offsetRad(s.well!))).toBeGreaterThan(0.05);
+    expect(Math.abs(offsetRad(s.fountain!))).toBeGreaterThan(0.05);
+  });
+});
+
 describe('layoutSettlement: what each level unlocks', () => {
-  it('adds a well, then lanes, then a fountain, then lamps', () => {
+  it('adds a well, then lanes, then a fountain, then lanterns', () => {
     const at = (level: number) => layoutSettlement(d, level).features;
-    expect(at(1)).toEqual({ lamps: [], lanes: [], cars: [] });
+    expect(at(1)).toEqual({ lamps: [], lanes: [] });
     expect(at(2).well).toBeDefined();
     expect(at(2).lanes).toEqual([]);
     expect(at(3).lanes.length).toBeGreaterThan(0);
@@ -121,41 +146,25 @@ describe('layoutSettlement: what each level unlocks', () => {
     expect(at(5).lamps.length).toBeGreaterThan(0);
   });
 
-  it('keeps houses clear of the well, the fountain and the lamps', () => {
+  it('keeps houses clear of the well, the fountain, the lanterns and the middle of the lanes', () => {
     const s = layoutSettlement(d, 9);
     for (const h of s.houses) {
       expect(dist(h, s.features.well!)).toBeGreaterThan(3.5);
       expect(dist(h, s.features.fountain!)).toBeGreaterThan(4);
       for (const lamp of s.features.lamps) expect(dist(h, lamp)).toBeGreaterThan(2);
+      for (const lane of s.features.lanes) expect(Math.abs(dist(h, centre) - lane.radius)).toBeGreaterThan(LANE_HALF_WIDTH + 0.5);
     }
   });
-});
 
-describe('parked cars: a City upgrade', () => {
-  it('arrive at City level, one more per City level after that', () => {
-    expect(layoutSettlement(d, 4).features.cars).toEqual([]);
-    expect(layoutSettlement(d, 5).features.cars).toHaveLength(3);
-    expect(layoutSettlement(d, 7).features.cars).toHaveLength(5);
-    expect(layoutSettlement(d, 20).features.cars).toHaveLength(8);
-  });
-
-  it('park on a lane, along it, clear of houses, lamps, the well and the fountain', () => {
-    const s = layoutSettlement(d, 20);
-    const lanes = s.features.lanes.map((l) => l.radius);
-    for (const car of s.features.cars) {
-      const r = dist(car, centre);
-      expect(Math.min(...lanes.map((l) => Math.abs(r - l)))).toBeLessThan(0.01);
-      // its length (local +x) runs along the lane: perpendicular to the direction from the centre
-      const along = { x: Math.cos(car.rot), z: -Math.sin(car.rot) };
-      expect(Math.abs((along.x * (car.x - d.x) + along.z * (car.z - d.z)) / r)).toBeLessThan(0.01);
-      const reach = PROPS.cars[car.car].width / 2; // half its length
-      const size = PROPS.cars[car.car];
-      for (const h of s.houses) expect(overlap(footprint(car, size.width, size.depth), houseFootprint(h))).toBe(false);
-      for (const lamp of s.features.lamps) expect(dist(car, lamp)).toBeGreaterThan(reach + 0.5);
-      expect(dist(car, s.features.well!)).toBeGreaterThan(reach + 1);
-      expect(dist(car, s.features.fountain!)).toBeGreaterThan(reach + 2);
+  it('stands lanterns beside the lanes, at uneven spacing', () => {
+    const s = layoutSettlement(d, 9).features;
+    for (const lamp of s.lamps) {
+      const off = Math.min(...s.lanes.map((l) => Math.abs(dist(lamp, centre) - l.radius)));
+      expect(off).toBeCloseTo(LANE_HALF_WIDTH + 0.45, 1);
     }
-    expect(s.features.cars.every((c) => !['car_10', 'car_11', 'car_12'].includes(c.car))).toBe(true);
+    const onFirst = s.lamps.filter((l) => Math.abs(dist(l, centre) - s.lanes[0]!.radius) < 2).map(offsetRad).sort((a, b) => a - b);
+    const gaps = onFirst.slice(1).map((a, i) => a - onFirst[i]!);
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(0.02);
   });
 });
 
