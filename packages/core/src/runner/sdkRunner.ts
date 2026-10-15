@@ -52,36 +52,28 @@ export class SdkRunner implements AgentRunner {
     const onParentAbort = () => abort.abort(inv.signal?.reason);
     inv.signal?.addEventListener('abort', onParentAbort, { once: true });
 
-    const options: Options = {
-      cwd: inv.cwd,
-      additionalDirectories: [...(inv.guard.externalRead ?? [])],
-      model: inv.runtime.model,
-      effort: inv.runtime.effort,
-      maxTurns: inv.runtime.maxTurns,
-      maxBudgetUsd: inv.runtime.maxBudgetUsd,
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: inv.systemPrompt },
-      tools: inv.tools,
-      disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent'],
-      mcpServers: { [ORCH_MCP_SERVER]: createRoleToolServer(state) },
-      hooks: { PreToolUse: [{ hooks: [preToolUse] }] },
-      canUseTool: async (toolName, input) => {
-        const d = decide(toolName, input);
-        return d.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: d.reason };
-      },
-      permissionMode: 'default',
-      settingSources: [],
-      persistSession: false,
-      abortController: abort,
-      // The CLI needs the API key, but the commands an agent runs (its tests) must not see it:
-      // SUBPROCESS_ENV_SCRUB strips Anthropic credentials from every process the CLI spawns.
-      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'orchestrate/0.1.0', CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' },
-      ...(inv.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: inv.outputSchema } } : {}),
-    };
+    const options = buildOptions(inv, {
+      roleTools: createRoleToolServer(state),
+      preToolUse,
+      decide,
+      abort,
+    });
 
     const result: AgentResult = { outcome: 'completed', text: '', costUsd: 0, turns: 0, denials: 0 };
     try {
       for await (const msg of query({ prompt: inv.prompt, options }) as AsyncIterable<SDKMessage>) {
-        if (msg.type === 'assistant') {
+        if (msg.type === 'system' && msg.subtype === 'init') {
+          result.initTools = msg.tools;
+          // Without the role tools an agent cannot submit or escalate: every run would end as
+          // "completed without submitting". Stop at once and say why, rather than burn the budget.
+          const orch = msg.mcp_servers.find((s) => s.name === ORCH_MCP_SERVER);
+          if (orch?.status !== 'connected') {
+            result.outcome = 'error';
+            result.error = `role tools unavailable: the ${ORCH_MCP_SERVER} MCP server is ${orch?.status ?? 'missing'}`;
+            abort.abort(new Error(result.error));
+            break;
+          }
+        } else if (msg.type === 'assistant') {
           for (const block of msg.message.content) {
             if (block.type === 'text' && block.text.trim()) {
               inv.onSignal({ kind: 'log', level: 'text', text: block.text.trim().slice(0, 400) });
@@ -104,8 +96,10 @@ export class SdkRunner implements AgentRunner {
         }
       }
     } catch (err) {
-      result.outcome = abort.signal.aborted && inv.signal?.aborted ? 'cancelled' : 'error';
-      result.error = abort.signal.aborted && !inv.signal?.aborted ? `timed out after ${inv.runtime.timeoutMs}ms` : String(err);
+      if (!result.error) {
+        result.outcome = abort.signal.aborted && inv.signal?.aborted ? 'cancelled' : 'error';
+        result.error = abort.signal.aborted && !inv.signal?.aborted ? `timed out after ${inv.runtime.timeoutMs}ms` : String(err);
+      }
     } finally {
       clearTimeout(timer);
       inv.signal?.removeEventListener('abort', onParentAbort);
@@ -124,4 +118,48 @@ export class SdkRunner implements AgentRunner {
     else if (state.submitSummary && result.outcome === 'completed') result.outcome = 'submitted';
     return result;
   }
+}
+
+export interface SessionParts {
+  roleTools: ReturnType<typeof createRoleToolServer>;
+  preToolUse: HookCallback;
+  decide: (toolName: string, input: unknown) => GuardDecision;
+  abort: AbortController;
+}
+
+/**
+ * The SDK options for one agent session. Pure, so the settings that keep an agent contained are
+ * pinned by tests rather than by reading this file:
+ * - settingSources: [] — the target repo's .claude settings, hooks and MCP servers never load.
+ * - permissionMode 'default' plus the PreToolUse hook and canUseTool — every call meets the guard.
+ * - verbatimPrompts — "@path" in task text is not expanded by the CLI (that read would bypass the guard).
+ * - the role tools always loaded (see roleTools.ts), and credentials scrubbed from subprocesses.
+ */
+export function buildOptions(inv: AgentInvocation, parts: SessionParts): Options {
+  return {
+    cwd: inv.cwd,
+    additionalDirectories: [...(inv.guard.externalRead ?? [])],
+    model: inv.runtime.model,
+    effort: inv.runtime.effort,
+    maxTurns: inv.runtime.maxTurns,
+    maxBudgetUsd: inv.runtime.maxBudgetUsd,
+    systemPrompt: { type: 'preset', preset: 'claude_code', append: inv.systemPrompt },
+    tools: inv.tools,
+    disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent'],
+    mcpServers: { [ORCH_MCP_SERVER]: parts.roleTools },
+    hooks: { PreToolUse: [{ hooks: [parts.preToolUse] }] },
+    canUseTool: async (toolName, input) => {
+      const d = parts.decide(toolName, input);
+      return d.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: d.reason };
+    },
+    permissionMode: 'default',
+    settingSources: [],
+    persistSession: false,
+    verbatimPrompts: true,
+    abortController: parts.abort,
+    // The CLI needs the API key, but the commands an agent runs (its tests) must not see it:
+    // SUBPROCESS_ENV_SCRUB strips Anthropic credentials from every process the CLI spawns.
+    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'orchestrate/0.1.0', CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' },
+    ...(inv.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: inv.outputSchema } } : {}),
+  };
 }

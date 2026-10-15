@@ -44,6 +44,8 @@ export interface AgentResult {
   scopeRequest?: { paths: string[]; reason: string };
   blocker?: string;
   error?: string;
+  /** The tools the session started with (from the CLI's init message), to check what the agent could reach. */
+  initTools?: string[];
 }
 
 export interface AgentRunner {

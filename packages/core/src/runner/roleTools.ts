@@ -43,6 +43,9 @@ export function createRoleToolServer(state: RoleToolState) {
   return createSdkMcpServer({
     name: ORCH_MCP_SERVER,
     version: '0.1.0',
+    // Never deferred behind tool search: the scope guard refuses ToolSearch, so a deferred
+    // submit_work would be unreachable and every agent would end without submitting.
+    alwaysLoad: true,
     tools: [
       tool(
         'report_progress',
