@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { districtPlazaRadius, PLATFORM_RADIUS, type District } from '../src/layout.ts';
-import { houseCount, houseSpots, inSettlement, layoutSettlement } from '../src/scene/settlement/settlementLayout.ts';
+import { HOUSES, houseCount, houseSpots, inSettlement, layoutSettlement } from '../src/scene/settlement/settlementLayout.ts';
 
 const district = (angle: number, size = 20.25, radius = 64): District => ({
   squad: { id: 'render', name: 'Render & UI', color: '#f2a541', mission: '' },
@@ -57,7 +57,35 @@ describe('houseSpots: where houses go', () => {
       expect(dist(h, centre)).toBeLessThan(plaza + 6);
       expect(Math.abs(offsetDeg(h))).toBeLessThan(30);
     }
-    expect(spots[0]!.height).toBeLessThan(spots[spots.length - 1]!.height);
+    for (const h of spots.slice(0, 2)) expect(HOUSES[h.house].floors).toBe(1);
+    expect(spots.slice(-6).some((h) => HOUSES[h.house].floors > 1)).toBe(true);
+  });
+
+  it("never lets two houses' footprints touch, even the largest models side by side", () => {
+    /** The house's footprint corners, rotated to face the plaza. */
+    const corners = (h: (typeof spots)[number]) => {
+      const { width, depth } = HOUSES[h.house];
+      const [c, s] = [Math.cos(h.rot), Math.sin(h.rot)];
+      return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
+        const lx = (a! * width) / 2;
+        const lz = (b! * depth) / 2;
+        return { x: h.x + lx * c + lz * s, z: h.z - lx * s + lz * c };
+      });
+    };
+    // separating-axis test for two rectangles
+    const overlap = (p: { x: number; z: number }[], q: { x: number; z: number }[]) =>
+      [p, q].every((poly) =>
+        poly.every((a, i) => {
+          const b = poly[(i + 1) % 4]!;
+          const axis = { x: -(b.z - a.z), z: b.x - a.x };
+          const proj = (pts: typeof p) => pts.map((v) => v.x * axis.x + v.z * axis.z);
+          return Math.max(...proj(p)) > Math.min(...proj(q)) && Math.max(...proj(q)) > Math.min(...proj(p));
+        }),
+      );
+    for (const small of [d, district(Math.PI / 4, 8.75)]) {
+      const all = houseSpots(small);
+      for (const [i, h] of all.entries()) for (const other of all.slice(i + 1)) expect(overlap(corners(h), corners(other))).toBe(false);
+    }
   });
 
   it('turns each house to face the plaza', () => {

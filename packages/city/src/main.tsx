@@ -50,3 +50,6 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Dev only: lets tools/shot.mjs aim the camera (`__city.getState().camera(...)`). Not in production builds.
+if (import.meta.env.DEV) Object.assign(window, { __city: useCity });

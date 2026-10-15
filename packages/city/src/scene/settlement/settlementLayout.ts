@@ -1,5 +1,6 @@
 import { districtPlazaRadius, type District } from '../../layout.ts';
 import { rng } from '../rng.ts';
+import kit from './kit.json';
 
 /**
  * Where a district's settlement stands. Pure and deterministic: every district has a fixed, ordered
@@ -11,15 +12,24 @@ import { rng } from '../rng.ts';
 export interface HouseSpot {
   x: number;
   z: number;
-  /** Rotation about y; the house's local +z faces the plaza. */
+  /** Rotation about y; the house's local +z (its front door) faces the plaza. */
   rot: number;
-  width: number;
-  depth: number;
-  /** Wall height: later houses are taller, so towns read as two storeys. */
-  height: number;
+  /** Which house model stands here: cottages first, two-storey houses as the town grows. */
+  house: HouseName;
   /** 0–1, varies the roof shade within the squad's colour. */
   shade: number;
 }
+
+export type HouseName = keyof typeof kit.houses;
+/** Model sizes in world units, written by tools/build-settlement.mjs. */
+export const HOUSES: Record<HouseName, { width: number; depth: number; height: number; floors: number }> = kit.houses;
+
+/** House models by how far out a spot is: small near the plaza, larger toward the edge of town. */
+const TIERS: HouseName[][] = [
+  ['cottage', 'croft'],
+  ['cottage', 'croft', 'longhouse', 'townhouse'],
+  ['townhouse', 'hall', 'tallhouse', 'longhouse'],
+];
 
 export interface Point {
   x: number;
@@ -98,13 +108,12 @@ export function houseSpots(d: District): HouseSpot[] {
   candidates.sort((a, b) => a.score - b.score);
   return candidates.map((p, i) => {
     const t = candidates.length > 1 ? i / (candidates.length - 1) : 0;
+    const tier = TIERS[t < 0.3 ? 0 : t < 0.6 ? 1 : 2]!;
     return {
       x: p.x,
       z: p.z,
       rot: Math.atan2(d.x - p.x, d.z - p.z),
-      width: 2.6 + rand() * 0.8,
-      depth: 2.2 + rand() * 0.6,
-      height: 1.7 + t * 1.3 + rand() * 0.3,
+      house: tier[Math.floor(rand() * tier.length)]!,
       shade: rand(),
     };
   });

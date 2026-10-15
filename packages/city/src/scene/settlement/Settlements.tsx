@@ -1,3 +1,4 @@
+import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -5,27 +6,22 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
-import { foliageMaterial } from '../park/treeKit.ts';
-import { layoutSettlement, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
+import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
 
 /**
- * Each district's settlement: houses (white walls, roofs in shades of the squad colour), and the
- * well, lanes, fountain and lamps its level has unlocked. Levels come from the daemon's progress.
- * When a district grows, the new houses rise out of the ground, after the Harvest screen closes so
- * the moment is not hidden behind it.
+ * Each district's settlement: houses from Kenney's Fantasy Town Kit (roofs in shades of the squad
+ * colour), and the well, lanes, fountain and lamps its level has unlocked. Levels come from the
+ * daemon's progress. When a district grows, the new houses rise out of the ground, after the
+ * Harvest screen closes so the moment is not hidden behind it.
  */
+
+export const SETTLEMENT_URL = `${import.meta.env.BASE_URL}models/settlement.glb`;
+useGLTF.preload(SETTLEMENT_URL);
 
 const RISE_MS = 1100;
 const STAGGER_MS = 140;
-const ROOF_H = 1.25;
+const HOUSE_NAMES = Object.keys(HOUSES) as HouseName[];
 
-/** Unit gable roof: ridge along z, base on y = 0, 1 wide and 1 deep. */
-const ROOF = (() => {
-  const shape = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)]);
-  return new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false }).translate(0, 0, -0.5);
-})();
-const WALLS = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-const wallMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, flatShading: true });
 const stoneMaterial = new THREE.MeshStandardMaterial({ color: PALETTE.stone, roughness: 0.9, flatShading: true });
 const waterMaterial = new THREE.MeshStandardMaterial({ color: '#6fa7b0', roughness: 0.25, metalness: 0.1 });
 const poleMaterial = new THREE.MeshStandardMaterial({ color: '#4a4136', roughness: 0.6 });
@@ -34,6 +30,8 @@ const lampMaterial = new THREE.MeshStandardMaterial({ color: '#ffd889', emissive
 interface Placed extends HouseSpot {
   key: string;
   color: string;
+  /** Index within its house model's instanced meshes. */
+  slot: number;
 }
 
 /** `?settle=5` shows every district at that level, to preview the city without shipping seven projects. */
@@ -44,21 +42,35 @@ const PREVIEW_LEVEL = (() => {
 
 const prefersReducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
+const meshOf = (nodes: Record<string, THREE.Object3D>, name: string) => nodes[name] as THREE.Mesh | undefined;
 
 export function Settlements({ layout }: { layout: CityLayout }) {
   const progress = useCity((s) => s.progress);
   const harvestOpen = useCity((s) => !!s.harvest);
   const gl = useThree((s) => s.gl);
+  const { nodes } = useGLTF(SETTLEMENT_URL);
+  const kitMaterial = useMemo(() => {
+    const m = (meshOf(nodes, 'cottage_body')!.material as THREE.MeshStandardMaterial).clone();
+    m.roughness = 0.85;
+    return m;
+  }, [nodes]);
+  useEffect(() => () => kitMaterial.dispose(), [kitMaterial]);
 
   const settlements = useMemo(() => {
     const level = new Map(progress?.districts.map((d) => [d.squad, d.settlement.level]));
     return layout.districts.map((d) => ({ district: d, ...layoutSettlement(d, PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1) }));
   }, [layout, progress]);
 
-  const houses = useMemo<Placed[]>(
-    () => settlements.flatMap(({ district, houses }) => houses.map((h, i) => ({ ...h, key: `${district.squad.id}:${i}`, color: district.squad.color }))),
-    [settlements],
-  );
+  const houses = useMemo<Placed[]>(() => {
+    const slots = new Map<HouseName, number>();
+    return settlements.flatMap(({ district, houses }) =>
+      houses.map((h, i) => {
+        const slot = slots.get(h.house) ?? 0;
+        slots.set(h.house, slot + 1);
+        return { ...h, key: `${district.squad.id}:${i}`, color: district.squad.color, slot };
+      }),
+    );
+  }, [settlements]);
 
   // Which houses are new, and when each starts rising. key -> start time; Infinity = waiting for
   // the Harvest screen to close.
@@ -73,30 +85,34 @@ export function Settlements({ layout }: { layout: CityLayout }) {
     for (const [key, start] of rising.current) if (start === Infinity) rising.current.set(key, now + 250 + k++ * STAGGER_MS);
   }, [harvestOpen, houses]);
 
-  const walls = useRef<THREE.InstancedMesh>(null);
-  const roofs = useRef<THREE.InstancedMesh>(null);
-  const roofMaterial = useMemo(() => foliageMaterial(), []);
-  useEffect(() => () => roofMaterial.dispose(), [roofMaterial]);
+  // one body mesh and one roof mesh per house model
+  const bodies = useRef(new Map<HouseName, THREE.InstancedMesh>());
+  const roofs = useRef(new Map<HouseName, THREE.InstancedMesh>());
 
   const m = useMemo(() => new THREE.Matrix4(), []);
   const q = useMemo(() => new THREE.Quaternion(), []);
-  const s = useMemo(() => new THREE.Vector3(), []);
+  const one = useMemo(() => new THREE.Vector3(1, 1, 1), []);
   const p = useMemo(() => new THREE.Vector3(), []);
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
 
-  /** Place house i, sunk by `sink` world units (0 = standing). */
-  const place = (i: number, h: Placed, sink: number) => {
-    q.setFromAxisAngle(up, h.rot);
-    m.compose(p.set(h.x, -sink, h.z), q, s.set(h.width, h.height, h.depth));
-    walls.current?.setMatrixAt(i, m);
-    m.compose(p.set(h.x, h.height - sink, h.z), q, s.set(h.width * 1.16, ROOF_H, h.depth * 1.22));
-    roofs.current?.setMatrixAt(i, m);
+  /** Place a house, sunk by `sink` world units (0 = standing). */
+  const place = (h: Placed, sink: number) => {
+    m.compose(p.set(h.x, -sink, h.z), q.setFromAxisAngle(up, h.rot), one);
+    bodies.current.get(h.house)?.setMatrixAt(h.slot, m);
+    roofs.current.get(h.house)?.setMatrixAt(h.slot, m);
   };
-  const depthOf = (h: Placed) => h.height + ROOF_H + 0.2;
+  const depthOf = (h: Placed) => HOUSES[h.house].height + 0.2;
+  const meshes = () => [...bodies.current.values(), ...roofs.current.values()];
 
+  const known = !!progress || PREVIEW_LEVEL !== undefined;
   useLayoutEffect(() => {
+    // houses that went away (a demo reset, a removed squad) must not keep the animation loop alive
+    const present = new Set(houses.map((h) => h.key));
+    for (const key of rising.current.keys()) if (!present.has(key)) rising.current.delete(key);
+
     if (!seen.current) {
-      seen.current = new Set(houses.map((h) => h.key)); // first load: the town is simply there
+      // first load: the town is simply there (wait for real progress, or the default level would make it "grow")
+      if (known) seen.current = present;
     } else {
       const fresh = houses.filter((h) => !seen.current!.has(h.key));
       for (const h of fresh) {
@@ -106,56 +122,87 @@ export function Settlements({ layout }: { layout: CityLayout }) {
     }
 
     const c = new THREE.Color();
-    const wall = new THREE.Color('#f6f1e6');
+    const plaster = new THREE.Color(PALETTE.limestone);
     const shadow = new THREE.Color('#5a3d2c');
-    houses.forEach((h, i) => {
-      place(i, h, rising.current.has(h.key) ? depthOf(h) : 0);
-      walls.current?.setColorAt(i, c.copy(wall).lerp(new THREE.Color(PALETTE.limestone), h.shade * 0.6));
-      roofs.current?.setColorAt(i, c.set(h.color).lerp(shadow, 0.12 + h.shade * 0.28));
-    });
-    for (const r of [walls, roofs]) {
-      if (!r.current) continue;
-      r.current.count = houses.length;
-      r.current.instanceMatrix.needsUpdate = true;
-      if (r.current.instanceColor) r.current.instanceColor.needsUpdate = true;
-      r.current.computeBoundingSphere();
+    const counts = new Map<HouseName, number>();
+    for (const h of houses) {
+      place(h, rising.current.has(h.key) ? depthOf(h) : 0);
+      bodies.current.get(h.house)?.setColorAt(h.slot, c.set('#ffffff').lerp(plaster, h.shade * 0.35));
+      roofs.current.get(h.house)?.setColorAt(h.slot, c.set(h.color).lerp(shadow, 0.08 + h.shade * 0.24));
+      counts.set(h.house, (counts.get(h.house) ?? 0) + 1);
+    }
+    for (const [name, mesh] of [...bodies.current, ...roofs.current]) {
+      mesh.count = counts.get(name) ?? 0;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingSphere();
     }
     gl.shadowMap.needsUpdate = true;
-  }, [houses, gl]);
+  }, [houses, gl, known]);
 
   useFrame(() => {
     if (!rising.current.size) return;
     const now = performance.now();
     let moved = false;
-    houses.forEach((h, i) => {
+    for (const h of houses) {
       const start = rising.current.get(h.key);
-      if (start === undefined || now < start) return;
+      if (start === undefined || now < start) continue;
       const t = Math.min(1, (now - start) / RISE_MS);
-      place(i, h, depthOf(h) * (1 - easeOut(t)));
+      place(h, depthOf(h) * (1 - easeOut(t)));
       moved = true;
       if (t >= 1) rising.current.delete(h.key);
-    });
+    }
     if (!moved) return;
-    for (const r of [walls, roofs]) if (r.current) r.current.instanceMatrix.needsUpdate = true;
+    for (const mesh of meshes()) mesh.instanceMatrix.needsUpdate = true;
     if (!rising.current.size) gl.shadowMap.needsUpdate = true; // shadows are baked: re-bake once everything stands
   });
 
-  // Room for growth in steps of 32, so a level-up rarely has to rebuild the instanced meshes.
-  const capacity = Math.ceil((houses.length + 1) / 32) * 32;
+  // Room for growth in steps of 16 per model, so a level-up rarely has to rebuild the instanced meshes.
+  const capacity = useMemo(() => {
+    const n = new Map<HouseName, number>();
+    for (const h of houses) n.set(h.house, (n.get(h.house) ?? 0) + 1);
+    return (name: HouseName) => Math.ceil(((n.get(name) ?? 0) + 1) / 16) * 16;
+  }, [houses]);
   const noPick = () => null;
+  const fountain = { body: meshOf(nodes, 'fountain_body'), water: meshOf(nodes, 'fountain_water') };
+  const lantern = meshOf(nodes, 'lantern_body');
+
   return (
     <group>
-      <instancedMesh ref={walls} args={[WALLS, wallMaterial, capacity]} castShadow receiveShadow raycast={noPick} />
-      <instancedMesh ref={roofs} args={[ROOF, roofMaterial, capacity]} castShadow receiveShadow raycast={noPick} />
+      {HOUSE_NAMES.map((name) =>
+        (['body', 'roof'] as const).map((part) => {
+          const source = meshOf(nodes, `${name}_${part}`);
+          if (!source) return null;
+          const refs = part === 'body' ? bodies : roofs;
+          return (
+            <instancedMesh
+              key={`${name}:${part}:${capacity(name)}`}
+              ref={(mesh) => {
+                if (mesh) refs.current.set(name, mesh);
+                else refs.current.delete(name);
+              }}
+              args={[source.geometry, kitMaterial, capacity(name)]}
+              castShadow
+              receiveShadow
+              raycast={noPick}
+            />
+          );
+        }),
+      )}
       {settlements.map(({ district, features }) => (
         <group key={district.squad.id}>
           {features.lanes.map((lane) => (
             <LaneArc key={lane.radius} x={district.x} z={district.z} lane={lane} />
           ))}
           {features.well && <Well at={features.well} />}
-          {features.fountain && <Fountain at={features.fountain} />}
+          {features.fountain && fountain.body && (
+            <group position={[features.fountain.x, 0, features.fountain.z]}>
+              <mesh geometry={fountain.body.geometry} material={kitMaterial} castShadow receiveShadow />
+              {fountain.water && <mesh geometry={fountain.water.geometry} material={waterMaterial} />}
+            </group>
+          )}
           {features.lamps.map((lamp, i) => (
-            <Lamp key={i} at={lamp} />
+            <Lamp key={i} at={lamp} post={lantern?.geometry} material={kitMaterial} />
           ))}
         </group>
       ))}
@@ -197,37 +244,21 @@ function Well({ at }: { at: Point }) {
   );
 }
 
-function Fountain({ at }: { at: Point }) {
+/** A street lamp from the kit, with a glowing light (bloom picks it up). */
+function Lamp({ at, post, material }: { at: Point; post?: THREE.BufferGeometry; material: THREE.Material }) {
+  if (post && !post.boundingBox) post.computeBoundingBox();
+  const top = post?.boundingBox?.max.y ?? 2.5;
   return (
     <group position={[at.x, 0, at.z]}>
-      <mesh position-y={0.25} material={stoneMaterial} castShadow receiveShadow>
-        <cylinderGeometry args={[1.9, 2.05, 0.5, 16]} />
-      </mesh>
-      <mesh position-y={0.51} rotation-x={-Math.PI / 2} material={waterMaterial}>
-        <circleGeometry args={[1.65, 16]} />
-      </mesh>
-      <mesh position-y={0.95} material={stoneMaterial} castShadow>
-        <cylinderGeometry args={[0.28, 0.4, 0.9, 10]} />
-      </mesh>
-      <mesh position-y={1.45} material={stoneMaterial} castShadow>
-        <cylinderGeometry args={[0.75, 0.55, 0.25, 12]} />
-      </mesh>
-      <mesh position-y={1.58} rotation-x={-Math.PI / 2} material={waterMaterial}>
-        <circleGeometry args={[0.6, 12]} />
-      </mesh>
-    </group>
-  );
-}
-
-/** A street lamp; the glass glows (bloom picks it up). */
-function Lamp({ at }: { at: Point }) {
-  return (
-    <group position={[at.x, 0, at.z]}>
-      <mesh position-y={1.2} material={poleMaterial} castShadow>
-        <cylinderGeometry args={[0.07, 0.1, 2.4, 6]} />
-      </mesh>
-      <mesh position-y={2.5} material={lampMaterial}>
-        <sphereGeometry args={[0.22, 10, 8]} />
+      {post ? (
+        <mesh geometry={post} material={material} castShadow />
+      ) : (
+        <mesh position-y={1.2} material={poleMaterial} castShadow>
+          <cylinderGeometry args={[0.07, 0.1, 2.4, 6]} />
+        </mesh>
+      )}
+      <mesh position-y={top - 0.32} material={lampMaterial}>
+        <sphereGeometry args={[0.13, 10, 8]} />
       </mesh>
     </group>
   );

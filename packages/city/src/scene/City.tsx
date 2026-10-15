@@ -141,7 +141,9 @@ export function City() {
           </group>
           <Scenery park={park} />
           <TaskTrees park={park} />
-          <Settlements layout={layout} />
+          <Suspense fallback={null}>
+            <Settlements layout={layout} />
+          </Suspense>
           {!off('pulses') && <PathPulses park={park} />}
           <Suspense fallback={null}>
             {layout.buildings.map((b) => (
