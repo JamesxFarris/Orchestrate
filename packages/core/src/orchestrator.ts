@@ -196,7 +196,11 @@ export class Orchestrator {
     this.controllers.set(id, controller);
     this.save(run);
     this.bus.emit({ type: 'run.created', runId: id, prompt });
-    this.done.set(id, this.execute(run, controller.signal, opts));
+    const done = this.execute(run, controller.signal, opts);
+    // execute() handles its own failures; if recording one throws too (a store error), log it rather
+    // than leave an unhandled rejection, which would take the whole daemon down
+    done.catch((err) => console.error(`[run ${id}] failed while recording its outcome:`, err));
+    this.done.set(id, done);
     return run;
   }
 
@@ -338,7 +342,7 @@ export class Orchestrator {
         this.setStatus(run, 'failed', err instanceof Error ? err.message : String(err));
       }
     } finally {
-      for (const r of this.org.roles) ctx.activity(r.id, 'idle');
+      for (const id of ctx.busyAgents) ctx.activity(id, 'idle');
       this.approvals.delete(run.id);
       this.controllers.delete(run.id);
     }

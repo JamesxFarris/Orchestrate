@@ -131,6 +131,13 @@ describe('scope guard: external reference dirs', () => {
     expect(g.check('Read', { file_path: path.join(ext, 'Assets', 'Enemy.cs') }).allow).toBe(true);
     expect(g.check('Grep', { pattern: 'Spawn', path: ext }).allow).toBe(true);
   });
+  it('resolves a relative path from the repo, as the tool does, not from the reference dir', () => {
+    // the reference dir lives elsewhere; "../decompiled" from the repo is a different folder
+    const far = path.resolve(root, '..', 'refs', 'decompiled');
+    const g2 = createScopeGuard({ root, write: [], read: ['src/**'], protected: [], bash: [], externalRead: [far] });
+    expect(g2.check('Read', { file_path: '../decompiled/secret.txt' }).allow).toBe(false);
+    expect(g2.check('Read', { file_path: '../refs/decompiled/Enemy.cs' }).allow).toBe(true);
+  });
   it('never allows writing them, or reading their siblings', () => {
     expect(g.check('Write', { file_path: path.join(ext, 'Assets', 'Enemy.cs') }).allow).toBe(false);
     expect(g.check('Read', { file_path: path.resolve(root, '..', 'decompiled-other', 'x.cs') }).allow).toBe(false);

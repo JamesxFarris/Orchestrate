@@ -128,7 +128,9 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         } else {
           feedback = [`Lead ruling — stay within your scope. Guidance: ${d.guidance}`];
         }
-        attempt--; // a ruling is not a failed attempt; MAX_ESCALATIONS bounds this loop
+        // a ruling is not a failed attempt (for the retry budget or the first-try bonus); MAX_ESCALATIONS bounds this loop
+        attempt--;
+        task.attempts--;
         continue;
       }
 
@@ -224,6 +226,8 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       `merge ${c.id}: ${c.title}`,
       c.kind === 'code' ? (dir) => runCommand(full, dir, gates.timeoutMs, ctx.signal) : undefined,
     );
+    // a cancel kills the suite, which then "fails": that is a cancellation, not a regression (the merge was rolled back)
+    ctx.throwIfCancelled();
     ctx.gate(task, 'full', merged.ok, merged.ok ? 'merged; full suite green' : `${merged.reason}: ${merged.output}`);
     if (!merged.ok) {
       ctx.setTaskStatus(task, 'failed', merged.reason === 'conflict' ? 'merge conflict with integration branch' : 'merge broke the full suite; reverted');

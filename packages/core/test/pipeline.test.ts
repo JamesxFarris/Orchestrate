@@ -202,7 +202,7 @@ describe('pipeline (FakeRunner, real git + real test gates)', () => {
     );
     const run = await env.orch.wait(env.orch.submit('add sum').id);
     expect(run.tasks[0]!.status).toBe('merged');
-    expect(run.tasks[0]!.attempts).toBe(2);
+    expect(run.tasks[0]!.attempts).toBe(1); // the scope request and its ruling don't count as a failed attempt
     const devCalls = (env.orch as unknown as { runner: FakeRunner }).runner.calls.filter((c) => c.agentId === 'core-dev');
     expect(devCalls[1]!.guard.write).toEqual(['src/sum.js', 'src/util/**']); // docs/** refused: not core's
     expect(devCalls[1]!.prompt).toContain('Refused (outside squad ownership): docs/**');
