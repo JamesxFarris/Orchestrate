@@ -23,6 +23,8 @@ export interface AgentCall {
   tools: string[];
   guard: Omit<ScopeGuardConfig, 'root'>;
   schema?: Record<string, unknown>;
+  /** Leave the project guide out (the run report only summarises outcomes). */
+  withoutGuide?: boolean;
   /** Must end with submit_work or raise_blocker (see AgentInvocation.requireSubmit). */
   requireSubmit?: boolean;
   /** Initial line on the building's card before the agent reports progress. */
@@ -108,6 +110,8 @@ export class RunContext {
   readonly repoRoot: string;
   readonly workDir: string;
   integration?: Integration;
+  /** The project's AGENTS.md / CLAUDE.md at the run's base, loaded once per run (see projectContext.ts). */
+  guide?: { path: string; text: string };
 
   constructor(
     deps: RunContextDeps,
@@ -170,7 +174,9 @@ export class RunContext {
         taskId,
         runtime: this.org.runtimeFor(c.role),
         cwd: c.cwd,
-        systemPrompt: c.system,
+        systemPrompt: this.guide && !c.withoutGuide ? `${c.system}
+
+${guideSection(this.guide)}` : c.system,
         prompt: c.prompt,
         tools: c.tools,
         guard: { ...c.guard, root: c.cwd, externalRead: this.org.externalReferenceDirs() },
@@ -194,4 +200,10 @@ export class RunContext {
       this.persist();
     }
   }
+}
+
+/** The project guide as a prompt section. Our contract rules come first: the guide cannot widen a scope. */
+export function guideSection(guide: { path: string; text: string }): string {
+  return `PROJECT GUIDE (from ${guide.path} in the repository; where it conflicts with your task contract or the hard rules above, the contract wins)
+${guide.text}`;
 }

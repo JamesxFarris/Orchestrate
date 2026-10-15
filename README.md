@@ -74,7 +74,11 @@ A test loads every `presets/*.team.yaml` through the real org loader, so a broke
 ## How drift is prevented
 
 1. **Task contracts.** Each task has an objective, testable acceptance criteria, non-goals, a narrow `writeScope`, exact `testFiles`, dependencies and a line cap. Deterministic validation rejects plans that write outside the squad's ownership, place tests in another squad's directories, use unbounded globs, contain cycles or exceed the size cap.
-2. **Fresh session per task.** The agent sees only its contract. Repo `CLAUDE.md` and settings files are not loaded (`settingSources: []`).
+2. **Fresh session per task, with curated context.** Repo settings, hooks and MCP servers are never loaded (`settingSources: []`), and prompts are sent verbatim (no `@path` expansion). Instead the orchestrator hands each agent what it needs, read from the run's base commit, not your working copy:
+   - **Project guide:** `AGENTS.md`, else `CLAUDE.md`, in every role's prompt (`project.agentDoc` picks another file, `""` turns it off; `agentDocMaxChars` caps it). The task contract wins on conflict.
+   - **Task brief:** what the tasks it depends on delivered, the design docs to follow, and where Grep may search.
+   - **Retries:** a note on what the previous attempt changed and said, plus the start and end of each failing gate's output.
+   - **Planner:** the newest decision records in `project.adrDir` (default `docs/adr`) with the next free ADR number, and one line per recent run on this project with its follow-ups.
 3. **Scope guard on every tool call.** A PreToolUse hook and `canUseTool` both check each call:
    - Writes outside scope are denied.
    - QA's test files are protected from the dev.

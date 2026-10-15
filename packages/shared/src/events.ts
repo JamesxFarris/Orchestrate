@@ -78,6 +78,17 @@ export interface TaskState {
   attempts: number;
   branch?: string;
   detail?: string;
+  /** What a merged task delivered: later tasks that depend on it are told (see pipeline/brief.ts). */
+  result?: TaskResult;
+}
+
+export interface TaskResult {
+  /** The implementer's own summary when it submitted. */
+  summary?: string;
+  /** Files the task changed. */
+  files: string[];
+  /** The lead's review notes. */
+  reviewNotes?: string;
 }
 
 export interface RunState {
@@ -91,6 +102,10 @@ export interface RunState {
   /** The integration branch's final commit, so a ship can be detected even after the branch is deleted. */
   integrationHead?: string;
   summary?: string;
+  /** Follow-up work the run report named; the planner sees recent ones (memory). */
+  followUps?: string[];
+  /** The target repository the run worked on (the store is shared across projects). */
+  repo?: string;
   costUsd: number;
   detail?: string;
 }
