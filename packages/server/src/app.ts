@@ -22,6 +22,11 @@ const SubmitBody = z.object({
   baseRef: z.string().max(200).optional(),
 });
 
+/** A WebSocket client this far behind is dropped rather than buffered without limit. */
+const MAX_BUFFERED = 4 * 1024 * 1024;
+/** Ping interval; a client that misses one pong is dropped. */
+const HEARTBEAT_MS = 30_000;
+
 /** `partial`: ship a run even though some of its tasks did not finish (the caller has said so). */
 const ShipBody = z.object({ partial: z.boolean().optional() });
 
@@ -114,8 +119,24 @@ export async function buildApp({ backend, staticDir, logger = false, origins = l
   // the onRequest hook has already refused foreign hosts and origins before the upgrade
   app.get('/ws', { websocket: true }, (socket) => {
     socket.send(JSON.stringify({ type: 'hello', mode: backend.mode, agents: backend.bus.agentSnapshots() }));
-    const off = backend.bus.on((e) => socket.send(JSON.stringify(e)));
-    socket.on('close', off);
+    // A stalled tab or a half-open connection would otherwise buffer every agent.log forever.
+    // Dropped clients reconnect and reload the state (the city queues events while it does).
+    const off = backend.bus.on((e) => {
+      if (socket.readyState !== socket.OPEN) return;
+      if (socket.bufferedAmount > MAX_BUFFERED) return socket.terminate();
+      socket.send(JSON.stringify(e));
+    });
+    let alive = true;
+    socket.on('pong', () => (alive = true));
+    const heartbeat = setInterval(() => {
+      if (!alive) return socket.terminate();
+      alive = false;
+      socket.ping();
+    }, HEARTBEAT_MS);
+    socket.on('close', () => {
+      off();
+      clearInterval(heartbeat);
+    });
   });
 
   if (staticDir && existsSync(staticDir)) {

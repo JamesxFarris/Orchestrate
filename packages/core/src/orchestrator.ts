@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { rmdirSync } from 'node:fs';
 import path from 'node:path';
-import { CircleReview, Plan, roleName, RunSummary, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
+import { CircleReview, Plan, roleName, RunSummary, type OrchestrateEvent, type ProgressSnapshot, type RoleConfig, type RunState, type RunStatus, type ShipMethod, type TaskState } from '@orchestrate/shared';
 import { EventBus } from './events/bus.ts';
 import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
@@ -23,6 +23,8 @@ import { detectShipped, shipRun, type ShipResult } from './ship/ship.ts';
 import type { ShipRecord, Store } from './store/store.ts';
 
 const FINISHED = new Set<RunStatus>(['completed', 'failed', 'cancelled']);
+/** The only events progress reads: what each task cost, its escalations, and when the run ended. */
+const PROGRESS_EVENT_TYPES: OrchestrateEvent['type'][] = ['agent.cost', 'escalation', 'run.status'];
 const TASK_FINISHED = new Set<TaskState['status']>(['merged', 'failed', 'escalated', 'skipped']);
 
 export interface OrchestratorOptions {
@@ -57,6 +59,8 @@ export class Orchestrator {
   private readonly approvals = new Map<string, { resolve: () => void; reject: (e: Error) => void }>();
   private readonly done = new Map<string, Promise<RunState>>();
   private readonly ships = new Map<string, ShipRecord>();
+  /** Progress events of finished runs, which never change (see progress()). */
+  private readonly progressEvents = new Map<string, OrchestrateEvent[]>();
   /** Ships and ship detection run one at a time, so a run is never recorded twice. */
   private shipLock: Promise<unknown> = Promise.resolve();
   private lastTargetHead?: string;
@@ -151,7 +155,13 @@ export class Orchestrator {
   /** Districts' growth, settlements and streaks, derived from stored runs, events and ships. */
   progress(): ProgressSnapshot {
     const facts = this.allRuns().map((run) => {
-      const events = this.store?.events(run.id) ?? [];
+      // Progress reads only costs, escalations and the final status. A finished run's are settled,
+      // so they are read once; this runs on every task change, for every run ever.
+      let events = this.progressEvents.get(run.id);
+      if (!events) {
+        events = this.store?.events(run.id, PROGRESS_EVENT_TYPES) ?? [];
+        if (FINISHED.has(run.status)) this.progressEvents.set(run.id, events);
+      }
       return { run, events, finishedAt: finishedAt(events), shippedAt: this.ships.get(run.id)?.at };
     });
     return computeProgress(facts, this.org.squads.map((s) => s.id), (squad, kind) => this.org.implementerBudget(squad, kind));
