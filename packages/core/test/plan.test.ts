@@ -70,6 +70,13 @@ describe('Org (corpsegrinder preset)', () => {
       expect(problems).toMatch(/techCircle member "missing"/);
     }
   });
+
+  it('rejects misspelled settings instead of quietly using the defaults', () => {
+    const typo = (over: Record<string, unknown>) => () => Org.fromConfig({ ...structuredClone(Org.load(preset).config), ...over });
+    expect(typo({ policy: { requireHumanAproval: true } })).toThrow(/requireHumanAproval/);
+    expect(typo({ defaults: { model: 'x', maxBudgetUSD: 1 } })).toThrow(/maxBudgetUSD/);
+    expect(typo({ techCircel: [] })).toThrow(/techCircel/);
+  });
 });
 
 describe('presets', () => {

@@ -21,7 +21,7 @@ export type Tier = z.infer<typeof Tier>;
 export const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type Effort = z.infer<typeof Effort>;
 
-export const AgentRuntime = z.object({
+export const AgentRuntime = z.strictObject({
   model: z.string().default('claude-opus-5-5'),
   effort: Effort.default('high'),
   maxTurns: z.number().int().positive().default(40),
@@ -30,7 +30,7 @@ export const AgentRuntime = z.object({
 });
 export type AgentRuntime = z.infer<typeof AgentRuntime>;
 
-export const RoleConfig = z.object({
+export const RoleConfig = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/, 'role ids are lowercase-kebab'),
   title: z.string(),
   kind: RoleKind,
@@ -45,7 +45,7 @@ export const RoleConfig = z.object({
 });
 export type RoleConfig = z.infer<typeof RoleConfig>;
 
-export const SquadConfig = z.object({
+export const SquadConfig = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/),
   name: z.string(),
   /** Accent colour for the squad's district in the city. */
@@ -58,7 +58,7 @@ export const SquadConfig = z.object({
 });
 export type SquadConfig = z.infer<typeof SquadConfig>;
 
-export const GateConfig = z.object({
+export const GateConfig = z.strictObject({
   /** Run once after creating a worktree, e.g. "npm ci". Prefer project.linkDirs for speed. */
   setup: z.string().optional(),
   typecheck: z.string().optional(),
@@ -73,7 +73,7 @@ export const GateConfig = z.object({
 });
 export type GateConfig = z.infer<typeof GateConfig>;
 
-export const Policy = z.object({
+export const Policy = z.strictObject({
   /** Dev attempts after the first before a task escalates to its lead. */
   maxRetries: z.number().int().min(0).default(2),
   /** Default cap on added+removed lines per task; the master must split anything larger. */
@@ -84,7 +84,7 @@ export const Policy = z.object({
 });
 export type Policy = z.infer<typeof Policy>;
 
-export const ProjectConfig = z.object({
+export const ProjectConfig = z.strictObject({
   name: z.string(),
   language: z.string(),
   repoPath: z.string().optional(),
@@ -105,7 +105,7 @@ export const ProjectConfig = z.object({
 });
 export type ProjectConfig = z.infer<typeof ProjectConfig>;
 
-export const TeamConfig = z.object({
+export const TeamConfig = z.strictObject({
   version: z.literal(1),
   project: ProjectConfig,
   defaults: AgentRuntime.default(AgentRuntime.parse({})),
