@@ -33,7 +33,8 @@ export interface CityLayout {
 }
 
 export const HQ_ACCENT = PALETTE.sand;
-export const PLATFORM_RADIUS = 125;
+/** The island. Big enough for each district to grow from a village into a city around it. */
+export const PLATFORM_RADIUS = 155;
 
 /** Radius of a district's paved plaza (its towers stand on it). */
 export const districtPlazaRadius = (size: number) => size + 3;

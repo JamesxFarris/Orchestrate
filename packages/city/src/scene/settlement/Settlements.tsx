@@ -6,6 +6,8 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
+import { RingRoad, TownPieces } from './Town.tsx';
+import { layoutTown } from './townLayout.ts';
 import { HOUSES, LANE_HALF_WIDTH, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
 
 /**
@@ -58,8 +60,14 @@ export function Settlements({ layout }: { layout: CityLayout }) {
 
   const settlements = useMemo(() => {
     const level = new Map(progress?.districts.map((d) => [d.squad, d.settlement.level]));
-    return layout.districts.map((d) => ({ district: d, ...layoutSettlement(d, PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1) }));
+    return layout.districts.map((d) => {
+      const lvl = PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1;
+      const village = layoutSettlement(d, lvl);
+      return { district: d, ...village, town: layoutTown(d, lvl, village) };
+    });
   }, [layout, progress]);
+
+  const townPieces = useMemo(() => settlements.flatMap((s) => s.town.pieces), [settlements]);
 
   const houses = useMemo<Placed[]>(() => {
     const slots = new Map<HouseName, number>();
@@ -189,8 +197,10 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           );
         }),
       )}
-      {settlements.map(({ district, features }) => (
+      <TownPieces pieces={townPieces} />
+      {settlements.map(({ district, features, town }) => (
         <group key={district.squad.id}>
+          {town.road && <RingRoad x={district.x} z={district.z} road={town.road} />}
           {features.lanes.map((lane) => (
             <LaneArc key={lane.radius} x={district.x} z={district.z} lane={lane} />
           ))}

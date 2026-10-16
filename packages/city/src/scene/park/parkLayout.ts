@@ -136,7 +136,7 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
   };
 
   const trees: DecorTree[] = [];
-  for (let i = 0; i < 900 && trees.length < 190; i++) {
+  for (let i = 0; i < 1400 && trees.length < 280; i++) {
     const a = rand() * Math.PI * 2;
     const r = Math.sqrt(rand()) * (PLATFORM_RADIUS - 7);
     const p = new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r);

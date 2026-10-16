@@ -61,6 +61,14 @@ export interface SettlementFeatures {
 export interface Settlement {
   houses: HouseSpot[];
   features: SettlementFeatures;
+  /** Every house spot, built or not yet: later additions keep clear of where houses will go. */
+  allHouses: HouseSpot[];
+  /** Where the well and fountain stand (or will). */
+  spots: { well: Point; fountain: Point };
+  /** The lanes, whether laid yet or not. */
+  allLanes: Lane[];
+  /** The lanterns, whether lit yet or not. */
+  allLamps: Point[];
 }
 
 /** Houses per level: Hamlet 2, Village 6, Town 10, Borough 15, City 22, then +3 per City level. */
@@ -176,24 +184,32 @@ export function layoutSettlement(d: District, level: number): Settlement {
   const { well, fountain } = featureSpots(d);
   const lanes = LANES.map((lane) => ({ radius: plaza + lane, start: d.angle + shape.from - 0.06, length: shape.to - shape.from + 0.12 }));
   const houses = spots.slice(0, houseCount(level, spots.length));
+  // a lantern never stands where a house is (or will be)
+  const allLamps = lanterns(d, plaza, lanes).filter((l) => spots.every((h) => Math.hypot(h.x - l.x, h.z - l.z) > 2.3));
   return {
     houses,
+    allHouses: spots,
+    spots: { well, fountain },
+    allLanes: lanes,
+    allLamps,
     features: {
       well: level >= 2 ? well : undefined,
       lanes: level >= 3 ? lanes : [],
       fountain: level >= 4 ? fountain : undefined,
-      // a lantern never stands where a house is
-      lamps: level >= 5 ? lanterns(d, plaza, lanes).filter((l) => spots.every((h) => Math.hypot(h.x - l.x, h.z - l.z) > 2.3)) : [],
+      lamps: level >= 5 ? allLamps : [],
     },
   };
 }
 
-/** True inside any district's settlement band, so scenery trees grow elsewhere. */
+/** How far beyond the plaza a district may grow: the village, the ring road and the towers behind it (see townLayout.ts). */
+export const TOWN_REACH = 50;
+
+/** True inside any district's settlement band, village and future town alike, so scenery trees grow elsewhere. */
 export function inSettlement(districts: readonly District[], x: number, z: number): boolean {
   for (const d of districts) {
     const plaza = districtPlazaRadius(d.size);
     const r = Math.hypot(x - d.x, z - d.z);
-    if (r < plaza || r > plaza + ROWS[ROWS.length - 1]! + 3) continue;
+    if (r < plaza || r > plaza + TOWN_REACH) continue;
     const s = shapeOf(d);
     const a = Math.atan2(z - d.z, x - d.x) - d.angle;
     const rel = Math.atan2(Math.sin(a), Math.cos(a));
