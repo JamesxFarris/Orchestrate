@@ -22,6 +22,8 @@ export interface AgentInvocation {
   outputSchema?: Record<string, unknown>;
   /** The agent must end with submit_work or raise_blocker (QA, implementers); it gets one nudge if it tries to stop without. */
   requireSubmit?: boolean;
+  /** A short system prompt instead of Claude Code's full one (reading and judging jobs only). */
+  leanPrompt?: boolean;
   signal?: AbortSignal;
   onSignal: (s: AgentSignal) => void;
 }

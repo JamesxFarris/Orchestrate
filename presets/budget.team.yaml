@@ -1,0 +1,134 @@
+# Budget team: the default team, set up to stretch a small plan (e.g. Claude Pro) as far as it goes.
+# Same squads and roles as default.team.yaml; only how much each run uses differs:
+#   - Sonnet for planning and building, Haiku for reviewing and judging (see jobs:)
+#   - reviewers get a short system prompt (policy.leanReviews)
+#   - a two-seat Tech Circle (VP + architect) instead of every lead
+#   - one retry, one revision round, and a plain run report written without an agent
+#   - a usage cap per run (policy.maxRunUsd): new work stops there, finished work still merges
+# Dollar figures are API-equivalent: on a subscription they are your share of the plan's limits.
+#
+# EDIT `owns` AND `testDirs` BELOW TO MATCH YOUR REPO. They are the hard boundaries the orchestrator
+# enforces: an agent can only write inside its squad's `owns`, and QA's tests must sit in `testDirs`.
+# This file assumes a single-package layout:
+#
+#   src/client/   frontend (UI, components, styles)      -> Frontend
+#   src/server/   backend (API, services, data access)   -> Backend
+#   src/shared/   types and helpers both sides import    -> Platform
+#   tests/client/ tests/server/ tests/platform/          -> each squad's QA
+#   docs/         design docs + ADRs                     -> Architecture
+#   build, CI and tool config at the root                -> Platform
+#
+# A monorepo maps the same way, e.g. Frontend owns apps/web/**, Backend owns apps/api/**, Platform owns
+# packages/shared/** and the root config. Tests live in their own directories rather than next to the
+# source so a dev's write scope (src/client/**) never covers QA's test files.
+#
+# Run it:  npm run daemon -- --team presets/budget.team.yaml --repo ../your-app
+version: 1
+
+project:
+  name: My App                          # shown in every prompt and in the city
+  language: TypeScript
+  # repoPath: ../../your-app            # relative to THIS file; --repo on the command line wins
+  defaultBranch: main
+  # description: One or two sentences on what the app does. Injected into every agent's prompt.
+  testGlobs:
+    - "tests/**/*.test.ts"
+    - "tests/**/*.test.tsx"
+  linkDirs:
+    - node_modules                      # junctioned into each task's worktree instead of reinstalling
+
+defaults:
+  model: claude-sonnet-5-5
+  effort: medium
+  maxTurns: 25
+  maxBudgetUsd: 1.5                     # per agent session
+  timeoutMs: 900000
+
+# Model per kind of work. Planning and building get Sonnet; reading and judging get Haiku.
+jobs:
+  plan: { model: claude-sonnet-5-5, effort: high }
+  implement: { model: claude-sonnet-5-5, effort: medium }
+  qa: { model: claude-sonnet-5-5, effort: low, maxTurns: 15 }
+  circle: { model: claude-haiku-5-5, effort: low, maxTurns: 8, maxBudgetUsd: 0.3 }
+  review: { model: claude-haiku-5-5, effort: low, maxTurns: 10, maxBudgetUsd: 0.3 }
+  ruling: { model: claude-haiku-5-5, effort: low, maxTurns: 6, maxBudgetUsd: 0.2 }
+
+# Every gate must pass in your repo as-is, or every task will fail. Remove lines you don't have.
+gates:
+  typecheck: npx tsc --noEmit
+  # lint: npx eslint .
+  test: npx vitest run
+  testFiles: npx vitest run {files}
+  full: npx vitest run
+  timeoutMs: 600000
+
+policy:
+  maxRetries: 1
+  maxChangedLines: 300
+  circleRevisionRounds: 1
+  requireHumanApproval: true
+  maxParallel: 2
+  maxRunUsd: 3                          # stop starting new work past this (API-equivalent dollars)
+  summary: plain                        # the run report lists outcomes; no agent call
+  leanReviews: true
+
+squads:
+  - id: frontend
+    name: Frontend
+    color: "#f2a541"
+    mission: User interface — pages, components, client state, styling, and calls to the backend API.
+    owns: ["src/client/**", "public/**", "index.html"]
+    testDirs: ["tests/client/**"]
+  - id: backend
+    name: Backend
+    color: "#1985a1"
+    mission: Server — API routes, business logic, validation, persistence and integrations.
+    owns: ["src/server/**"]
+    testDirs: ["tests/server/**"]
+  - id: platform
+    name: Platform
+    color: "#9b5de5"
+    mission: Build, CI, configuration and shared infrastructure — the shared types and helpers both sides import, scripts, and tool config.
+    owns: ["src/shared/**", "scripts/**", ".github/**", "package.json", "tsconfig*.json", "*.config.*"]
+    testDirs: ["tests/platform/**"]
+  # Architecture keeps the squad id "research" used by every preset, so runs and tooling see one id.
+  - id: research
+    name: Architecture
+    color: "#7fb7be"
+    mission: >-
+      Design before code. When work spans squads, adds a module or needs a design decision, write a design
+      doc (docs/design/) and an ADR (docs/adr/) fixing the module boundaries and the contracts other squads
+      build against.
+    owns: ["docs/**"]
+
+roles:
+  # --- HQ -----------------------------------------------------------------
+  - { id: head-of-eng, title: VP of Engineering, kind: master, tier: exec }
+  - { id: architect, title: Principal Architect, kind: architect, tier: principal, reportsTo: head-of-eng }
+  - { id: head-of-qa, title: QA Manager, kind: qa_head, tier: principal, reportsTo: head-of-eng }
+
+  # --- Frontend -------------------------------------------------------------
+  - { id: frontend-lead, title: Tech Lead, kind: lead, tier: lead, squad: frontend, reportsTo: head-of-eng }
+  - { id: frontend-dev, title: Software Engineer, kind: dev, tier: senior, squad: frontend, reportsTo: frontend-lead }
+  - { id: frontend-qa, title: QA Engineer, kind: qa, tier: ic, squad: frontend, reportsTo: head-of-qa }
+
+  # --- Backend --------------------------------------------------------------
+  - { id: backend-lead, title: Tech Lead, kind: lead, tier: lead, squad: backend, reportsTo: head-of-eng }
+  - { id: backend-dev, title: Software Engineer, kind: dev, tier: senior, squad: backend, reportsTo: backend-lead }
+  - { id: backend-qa, title: QA Engineer, kind: qa, tier: ic, squad: backend, reportsTo: head-of-qa }
+
+  # --- Platform -------------------------------------------------------------
+  - { id: platform-lead, title: Tech Lead, kind: lead, tier: lead, squad: platform, reportsTo: head-of-eng }
+  - { id: platform-dev, title: Software Engineer, kind: dev, tier: senior, squad: platform, reportsTo: platform-lead }
+  - { id: platform-qa, title: QA Engineer, kind: qa, tier: ic, squad: platform, reportsTo: head-of-qa }
+
+  # --- Architecture -----------------------------------------------------------
+  - { id: research-lead, title: Tech Lead, kind: lead, tier: lead, squad: research, reportsTo: head-of-eng }
+  - { id: research-analyst, title: Systems Analyst, kind: analyst, tier: senior, squad: research, reportsTo: research-lead }
+
+  # --- Optional chapters (flip enabled: true to add them to the city) --------
+  - { id: head-of-product, title: Product Manager, kind: product, tier: principal, reportsTo: head-of-eng, enabled: false }
+  - { id: head-of-design, title: Product Designer, kind: design, tier: principal, reportsTo: head-of-eng, enabled: false }
+
+# Two seats: the VP plans, the architect reviews. (Every lead in the circle is one more review per round.)
+techCircle: [head-of-eng, architect]

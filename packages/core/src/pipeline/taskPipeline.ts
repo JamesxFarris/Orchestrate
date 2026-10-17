@@ -83,6 +83,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
       const read = [...c.readScope, ...writeScope, ...c.testFiles, ...org.project.referenceDirs, ...squad.owns, ...CONFIG_READS];
       const brief = buildTaskBrief(ctx.run, task, read);
       const res = await ctx.callAgent({
+        job: 'implement',
         role: implementer,
         activity: 'working',
         task,
@@ -106,6 +107,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         ctx.bus.emit({ type: 'escalation', runId: ctx.run.id, taskId: c.id, from: implementer.id, to: lead.id, reason: detail });
         ctx.handoff(task, implementer.id, lead.id, 'escalation');
         const ruling = await ctx.callAgent({
+          job: 'ruling',
           role: lead,
           activity: 'reviewing',
           task,
@@ -203,6 +205,7 @@ export async function executeTask(ctx: RunContext, task: TaskState): Promise<Tas
         parseStructured(
           CodeReview,
           await ctx.callAgent({
+            job: 'review',
             role: lead,
             activity: 'reviewing',
             task,
@@ -274,6 +277,7 @@ async function redPhase(
   for (let attempt = 0; attempt <= org.policy.maxRetries; attempt++) {
     ctx.setTaskStatus(task, 'red', attempt ? `QA attempt ${attempt + 1}` : undefined);
     const res = await ctx.callAgent({
+      job: 'qa',
       role: qa,
       activity: 'testing',
       task,

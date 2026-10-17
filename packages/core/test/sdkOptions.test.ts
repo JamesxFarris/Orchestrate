@@ -39,6 +39,15 @@ describe('agent session options: what keeps an agent contained', () => {
     expect(options.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).toBe('1');
   });
 
+  it("gives reading-and-judging jobs a short system prompt instead of Claude Code's", () => {
+    expect(options.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code', append: 'be good' });
+    const lean = buildOptions({ ...inv, leanPrompt: true }, { roleTools, preToolUse: async () => ({}), decide: () => ({ allow: true }), abort: new AbortController() });
+    expect(typeof lean.systemPrompt).toBe('string');
+    expect(lean.systemPrompt).toContain('be good'); // the role's own instructions are kept
+    expect(lean.systemPrompt).toContain('structured output');
+    expect((lean.systemPrompt as string).length).toBeLessThan(800);
+  });
+
   it('adds the Stop hook only for agents that must submit', () => {
     expect(options.hooks?.Stop).toBeUndefined();
     const gate = async () => ({});

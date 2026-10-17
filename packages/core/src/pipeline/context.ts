@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { AgentActivity, GateConfig, GateName, RoleConfig, RunState, TaskState, TaskStatus } from '@orchestrate/shared';
+import type { AgentActivity, GateConfig, GateName, Job, RoleConfig, RunState, TaskState, TaskStatus } from '@orchestrate/shared';
 import type { EventBus } from '../events/bus.ts';
 import { runCommand, type CommandResult } from '../gates/gates.ts';
 import * as g from '../git/git.ts';
@@ -13,8 +13,22 @@ export class CancelledError extends Error {
   }
 }
 
+/** The run reached Policy.maxRunUsd: no more agents start. Thrown before an agent would have started. */
+export class UsageCapError extends Error {
+  constructor(spent: number, cap: number) {
+    super(`usage cap reached: $${spent.toFixed(2)} of $${cap.toFixed(2)}`);
+  }
+}
+
+/** Jobs that only read and give a verdict: they can run on a short system prompt (Policy.leanReviews). */
+const LEAN_JOBS = new Set<Job>(['circle', 'review', 'ruling', 'summary']);
+/** Jobs that finish work already built; they still run after the usage cap (Policy.maxRunUsd). */
+const FINISHING_JOBS = new Set<Job>(['review', 'ruling']);
+
 export interface AgentCall {
   role: RoleConfig;
+  /** What kind of work this is: picks the model and limits (TeamConfig.jobs). */
+  job: Job;
   activity: AgentActivity;
   task?: TaskState;
   cwd: string;
@@ -110,6 +124,8 @@ export class RunContext {
   readonly repoRoot: string;
   readonly workDir: string;
   integration?: Integration;
+  /** Set once the run hits Policy.maxRunUsd: nothing new starts after it. */
+  capReached = false;
   /** The project's AGENTS.md / CLAUDE.md at the run's base, loaded once per run (see projectContext.ts). */
   guide?: { path: string; text: string };
 
@@ -165,6 +181,13 @@ export class RunContext {
 
   async callAgent(c: AgentCall): Promise<AgentResult> {
     this.throwIfCancelled();
+    const cap = this.org.policy.maxRunUsd;
+    if (cap !== undefined && this.run.costUsd >= cap) {
+      this.capReached = true;
+      // Reviews and rulings still run, so work already built and paid for can merge; they are the
+      // cheapest jobs. Anything that starts new work (planning, QA, implementing, the report) stops.
+      if (!FINISHING_JOBS.has(c.job)) throw new UsageCapError(this.run.costUsd, cap);
+    }
     const runId = this.run.id;
     const taskId = c.task?.contract.id;
     this.activity(c.role.id, c.activity, c.task, c.headline);
@@ -172,7 +195,7 @@ export class RunContext {
       const result = await this.runner.run({
         agentId: c.role.id,
         taskId,
-        runtime: this.org.runtimeFor(c.role),
+        runtime: this.org.runtimeFor(c.role, c.job),
         cwd: c.cwd,
         systemPrompt: this.guide && !c.withoutGuide ? `${c.system}
 
@@ -182,6 +205,7 @@ ${guideSection(this.guide)}` : c.system,
         guard: { ...c.guard, root: c.cwd, externalRead: this.org.externalReferenceDirs() },
         outputSchema: c.schema,
         requireSubmit: c.requireSubmit,
+        leanPrompt: this.org.policy.leanReviews && LEAN_JOBS.has(c.job),
         signal: this.signal,
         onSignal: (s) => {
           if (s.kind === 'progress') this.bus.emit({ type: 'agent.progress', runId, agentId: c.role.id, taskId, summary: s.summary });

@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import {
   AgentRuntime,
   TeamConfig,
+  type Job,
   type RoleConfig,
   type RoleKind,
   type SquadConfig,
@@ -112,14 +113,15 @@ export class Org {
     return this.config.techCircle.map((id) => this.roles.find((r) => r.id === id)).filter((r): r is RoleConfig => !!r);
   }
 
-  runtimeFor(role: RoleConfig): AgentRuntime {
-    return AgentRuntime.parse({ ...this.config.defaults, ...role.runtime });
+  /** The runtime for a role doing a job: defaults, then the job's settings, then the role's own. */
+  runtimeFor(role: RoleConfig, job?: Job): AgentRuntime {
+    return AgentRuntime.parse({ ...this.config.defaults, ...(job ? this.config.jobs[job] : {}), ...role.runtime });
   }
 
   /** One implementer invocation's budget: what a whole task must stay under to count as thrifty. */
   implementerBudget(squadId: string, kind: 'code' | 'research'): number {
     const role = this.implementer(squadId, kind);
-    return role ? this.runtimeFor(role).maxBudgetUsd : AgentRuntime.parse(this.config.defaults).maxBudgetUsd;
+    return role ? this.runtimeFor(role, 'implement').maxBudgetUsd : AgentRuntime.parse(this.config.defaults).maxBudgetUsd;
   }
 
   private validate(): string[] {

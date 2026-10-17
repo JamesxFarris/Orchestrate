@@ -157,7 +157,7 @@ export function buildOptions(inv: AgentInvocation, parts: SessionParts): Options
     effort: inv.runtime.effort,
     maxTurns: inv.runtime.maxTurns,
     maxBudgetUsd: inv.runtime.maxBudgetUsd,
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: inv.systemPrompt },
+    systemPrompt: inv.leanPrompt ? leanSystemPrompt(inv) : { type: 'preset', preset: 'claude_code', append: inv.systemPrompt },
     tools: inv.tools,
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent'],
     mcpServers: { [ORCH_MCP_SERVER]: parts.roleTools },
@@ -176,4 +176,20 @@ export function buildOptions(inv: AgentInvocation, parts: SessionParts): Options
     env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'orchestrate/0.1.0', CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' },
     ...(inv.outputSchema ? { outputFormat: { type: 'json_schema' as const, schema: inv.outputSchema } } : {}),
   };
+}
+
+/**
+ * The short system prompt for jobs that read and judge (reviews, rulings, the run report): the
+ * role's own instructions plus the few working rules they need, instead of Claude Code's full
+ * prompt, which is written for editing code and would be most of such a session's usage.
+ */
+export function leanSystemPrompt(inv: AgentInvocation): string {
+  return [
+    'You are an agent in Orchestrate, a team of AI engineers. You read and judge; you do not edit anything.',
+    `Working directory: ${inv.cwd}. Paths you read are relative to it.`,
+    inv.tools.length ? `Tools: ${inv.tools.join(', ')}. Use them only to check a claim you are unsure of; read only what the decision needs.` : 'You have no tools: decide from what you are given.',
+    'Be brief. Give your final answer as the structured output requested, and nothing else.',
+    '',
+    inv.systemPrompt,
+  ].join('\n');
 }
