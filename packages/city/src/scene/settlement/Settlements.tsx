@@ -6,6 +6,7 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
+import { Life } from './Life.tsx';
 import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
 
 /**
@@ -58,7 +59,10 @@ export function Settlements({ layout }: { layout: CityLayout }) {
 
   const settlements = useMemo(() => {
     const level = new Map(progress?.districts.map((d) => [d.squad, d.settlement.level]));
-    return layout.districts.map((d) => ({ district: d, ...layoutSettlement(d, PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1) }));
+    return layout.districts.map((d) => {
+      const at = PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1;
+      return { district: d, level: at, ...layoutSettlement(d, at) };
+    });
   }, [layout, progress]);
 
   const houses = useMemo<Placed[]>(() => {
@@ -206,6 +210,7 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           ))}
         </group>
       ))}
+      <Life sites={settlements} rising={rising} />
     </group>
   );
 }
