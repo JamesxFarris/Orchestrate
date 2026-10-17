@@ -184,7 +184,7 @@ Tests check code; evals check the agents' behaviour, and so the harness around t
 npm run eval                          # scripted team, free: every scenario must score perfectly
 npm run eval -- --live                # real agents; costs API money (a few dollars per scenario)
 npm run eval -- --live --repeat 3     # agents vary, so judge pass rates over several runs
-npm run eval -- --live --budget       # real agents on the budget presets models and limits (cheapest live check)
+npm run eval -- --live --budget       # real agents on the budget preset's models and limits (cheapest live check)
 npm run eval -- --only slugify        # one scenario; also --model <id>, --keep, --no-compare
 ```
 
