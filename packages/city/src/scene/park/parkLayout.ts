@@ -3,6 +3,7 @@ import { districtPlazaRadius, PLATFORM_RADIUS, type CityLayout, type Placement }
 import { PALETTE } from '../../palette.ts';
 import { rng } from '../rng.ts';
 import { inSettlement } from '../settlement/settlementLayout.ts';
+import { landmarkSites } from './landmarksLayout.ts';
 
 export { rng };
 
@@ -89,6 +90,7 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
 
   const reserved = [...taskSlots.values()].flat();
   const allPaths = [...paths.values()];
+  const sites = landmarkSites(city);
   const free = (p: THREE.Vector2, clearance: number) => {
     if (p.length() < city.plazaRadius + 3) return false;
     for (const d of city.districts) if (p.distanceTo(new THREE.Vector2(d.x, d.z)) < districtPlazaRadius(d.size) + 2) return false;
@@ -96,6 +98,8 @@ export function buildParkLayout(city: CityLayout): ParkLayout {
     for (const s of reserved) if (p.distanceTo(s) < 4) return false;
     // the far side of each district plaza is its settlement (see settlement/settlementLayout.ts)
     if (inSettlement(city.districts, p.x, p.y)) return false;
+    // landmark sites keep their formal gardens clear (see landmarksLayout.ts)
+    for (const s of sites) if (Math.hypot(p.x - s.x, p.y - s.z) < s.radius + clearance) return false;
     return true;
   };
 
