@@ -159,9 +159,24 @@ presets/          team files
 ## Tests
 
 ```bash
-npm test             # ~90 tests: scope guard, plan validation, presets, scheduler, full pipeline on a real git fixture, API
+npm test             # ~260 tests: scope guard, plan validation, presets, scheduler, full pipeline on a real git fixture, API, city layouts
 npm run typecheck
-ORCH_LIVE=1 npx vitest run packages/core/test/live.test.ts   # opt-in: one real agent, costs a few cents
+ORCH_LIVE=1 npx vitest run packages/core/test/live.test.ts   # opt-in: real agents, about $0.50
 ```
+
+### Evals: is the harness getting better?
+
+Tests check code; evals check the agents' behaviour, and so the harness around them. `packages/eval` runs whole requests end to end against small sample projects and scores the outcome:
+
+```bash
+npm run eval                          # scripted team, free: every scenario must score perfectly
+npm run eval -- --live                # real agents; costs API money (a few dollars per scenario)
+npm run eval -- --live --repeat 3     # agents vary, so judge pass rates over several runs
+npm run eval -- --only slugify        # one scenario; also --model <id>, --keep, --no-compare
+```
+
+Each scenario (`packages/eval/scenarios/<id>/`) is a starting project, a request, and **hidden judge tests** the agents never see: the ground truth for "is it actually right", whatever tests the agents wrote. A reference plan and solution let a scripted team play every role perfectly, which checks the scenario and the scoring for free. The scorecard covers correctness (judge tests), completion, process (first-try merges, retries, escalations, gate failures, guard denials, plans that needed a person) and cost and time. Results are saved under `.orchestrate/evals/` and each run is compared with the previous one, so a harness change shows up as better or worse. Run the live bench before merging harness changes or switching models, not on every commit.
+
+Scenarios today: `slugify` (a feature in one squad), `median-bug` (a fix from a bug report), `tax-endpoint` (a feature across two squads, in dependency order).
 
 The pipeline tests drive the whole flow with a scripted `FakeRunner` against a real git repo and real test commands. They cover a well-behaved team, an agent that writes out of scope, one that slips a change past the guard, one that tries to weaken its tests, failing gates, tests that are not red, lead grants and replans, Tech Circle revisions, and the approval gate.

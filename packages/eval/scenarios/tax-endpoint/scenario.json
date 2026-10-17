@@ -1,0 +1,41 @@
+{
+  "id": "tax-endpoint",
+  "title": "A feature across two squads",
+  "skill": "splitting work between squads and ordering it",
+  "request": "Add tax calculation. In core, add priceWithTax(cents, rate) to src/core/money.js: the price in integer cents with tax added, rounded half up (1005 cents at a 0.1 rate is 1106). In the API, src/api/router.js should answer { path: '/tax', query: { cents, rate } } (query values are strings) with { status: 200, body: { total } } using priceWithTax, and with status 400 when cents or rate is missing, not a number, or negative.",
+  "plan": {
+    "summary": "Core adds priceWithTax; the API exposes it on /tax.",
+    "risks": [],
+    "tasks": [
+      {
+        "id": "tax-core",
+        "title": "priceWithTax in core money",
+        "squad": "core",
+        "kind": "code",
+        "objective": "Export priceWithTax(cents, rate) from src/core/money.js, rounding half up to whole cents.",
+        "acceptanceCriteria": ["priceWithTax(1000, 0.08) === 1080", "priceWithTax(1005, 0.1) === 1106", "always an integer"],
+        "nonGoals": ["changing formatCents"],
+        "writeScope": ["src/core/money.js"],
+        "readScope": [],
+        "testFiles": ["test/core/tax.test.js"],
+        "dependsOn": [],
+        "testPlan": "unit tests for rounding"
+      },
+      {
+        "id": "tax-api",
+        "title": "/tax route",
+        "squad": "api",
+        "kind": "code",
+        "objective": "Answer /tax in src/api/router.js using priceWithTax, with 400 for bad input.",
+        "acceptanceCriteria": ["/tax with cents=1000, rate=0.08 answers total 1080", "missing, non-numeric or negative input answers 400", "/health still works"],
+        "nonGoals": ["changing core"],
+        "writeScope": ["src/api/router.js"],
+        "readScope": ["src/core/**"],
+        "testFiles": ["test/api/tax.test.js"],
+        "dependsOn": ["tax-core"],
+        "testPlan": "route tests for good and bad input"
+      }
+    ]
+  },
+  "reference": { "test/core/tax.test.js": "tax-core.test.js", "test/api/tax.test.js": "tax-api.test.js" }
+}

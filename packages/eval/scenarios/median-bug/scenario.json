@@ -1,0 +1,27 @@
+{
+  "id": "median-bug",
+  "title": "Fix a reported bug",
+  "skill": "a bug fix from a user report",
+  "request": "Bug report: median() in src/core/stats.js gives wrong answers for some inputs. For example median([10, 9, 2]) returns 10, but the median is 9. Small single-digit inputs seem fine. Please fix it.",
+  "plan": {
+    "summary": "Sort numerically in median().",
+    "risks": [],
+    "tasks": [
+      {
+        "id": "median-fix",
+        "title": "median() sorts numerically",
+        "squad": "core",
+        "kind": "code",
+        "objective": "Make median() in src/core/stats.js correct for multi-digit and negative numbers without changing its input.",
+        "acceptanceCriteria": ["median([10, 9, 2]) === 9", "even counts average the middle two", "negatives work", "the input array is not reordered"],
+        "nonGoals": ["changing mean"],
+        "writeScope": ["src/core/stats.js"],
+        "readScope": [],
+        "testFiles": ["test/core/median.test.js"],
+        "dependsOn": [],
+        "testPlan": "unit tests for the reported case and edge cases"
+      }
+    ]
+  },
+  "reference": { "test/core/median.test.js": "median.test.js" }
+}
