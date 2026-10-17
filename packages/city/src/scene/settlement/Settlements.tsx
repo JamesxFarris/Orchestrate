@@ -7,6 +7,7 @@ import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
 import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
+import { Yards } from './Yards.tsx';
 
 /**
  * Each district's settlement: houses from Kenney's Fantasy Town Kit (roofs in shades of the squad
@@ -189,6 +190,7 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           );
         }),
       )}
+      <Yards settlements={settlements} kit={nodes} material={kitMaterial} />
       {settlements.map(({ district, features }) => (
         <group key={district.squad.id}>
           {features.lanes.map((lane) => (
