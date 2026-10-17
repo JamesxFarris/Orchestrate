@@ -1,0 +1,27 @@
+{
+  "id": "slugify",
+  "title": "Add a utility function",
+  "skill": "a small feature in one squad",
+  "request": "Add a slugify(text) function to src/core/strings.js. It lower-cases the text, trims it, replaces every run of characters that are not letters or digits with a single hyphen, and never leaves a hyphen at the start or end. Example: slugify('  Hello, World!  ') returns 'hello-world'. Text with nothing usable returns ''.",
+  "plan": {
+    "summary": "Add slugify() to the core strings module.",
+    "risks": [],
+    "tasks": [
+      {
+        "id": "slugify",
+        "title": "slugify(text) in core strings",
+        "squad": "core",
+        "kind": "code",
+        "objective": "Export slugify(text) from src/core/strings.js as described in the request.",
+        "acceptanceCriteria": ["slugify('  Hello, World!  ') === 'hello-world'", "runs of separators collapse to one hyphen", "no leading or trailing hyphens", "empty result is ''"],
+        "nonGoals": ["changing capitalize"],
+        "writeScope": ["src/core/strings.js"],
+        "readScope": [],
+        "testFiles": ["test/core/slugify.test.js"],
+        "dependsOn": [],
+        "testPlan": "unit tests for the examples and edge cases"
+      }
+    ]
+  },
+  "reference": { "test/core/slugify.test.js": "slugify.test.js" }
+}

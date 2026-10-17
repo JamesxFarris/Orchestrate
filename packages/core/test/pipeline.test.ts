@@ -477,6 +477,9 @@ describe('redRejection: what counts as tests failing first', () => {
   it('accepts tests that fail because the feature is missing', () => {
     expect(redRejection(run({ output: 'AssertionError: expected 3, got undefined' }), files)).toBeUndefined();
     expect(redRejection(run({ output: "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '../src/sum.js'" }), files)).toBeUndefined();
+    // ES modules: importing a function that doesn't exist yet is a SyntaxError naming the test file
+    // (found by the eval bench: every "add a function" request was rejected here)
+    expect(redRejection(run({ output: "file:///repo/test/sum.test.js:2\nimport { sum } from '../src/sum.js';\nSyntaxError: The requested module '../src/sum.js' does not provide an export named 'sum'" }), files)).toBeUndefined();
     // a syntax error somewhere else is the code's problem, not the test's
     expect(redRejection(run({ output: 'SyntaxError: Unexpected token in src/legacy.js' }), files)).toBeUndefined();
   });

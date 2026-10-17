@@ -336,7 +336,11 @@ export function redRejection(r: CommandResult, testFiles: readonly string[]): st
   if (r.ok) return 'Your tests pass before anything is implemented, so they do not exercise the new behaviour. Assert the acceptance criteria against the code that will be written.';
   if (r.timedOut) return 'The test command timed out, so the tests never reported a result. Make them finish quickly (no waiting on servers, timers or input) and assert the acceptance criteria.';
   const own = testFiles.map((f) => f.split('/').pop()!);
-  if (/SyntaxError/.test(r.output) && own.some((name) => r.output.includes(name))) {
+  // A real parse error in the test file. Not "does not provide an export named …": in ES modules
+  // importing a function that doesn't exist yet is a SyntaxError too, and that is exactly the red
+  // a new feature should start from (the eval bench caught this rejecting every "add a function").
+  const parseErrors = r.output.split('\n').filter((l) => /SyntaxError/.test(l) && !/does not provide an export named/.test(l));
+  if (parseErrors.length && own.some((name) => r.output.includes(name))) {
     return `Your test file does not parse (SyntaxError), so it failed without testing anything. Fix the syntax; it should fail only because the feature is missing.\n${r.output.slice(-800)}`;
   }
   return undefined;

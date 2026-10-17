@@ -1,4 +1,14 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["packages/shared/src", "packages/core/src", "packages/core/test", "packages/server/test", "packages/server/src", "packages/mcp/src", "vitest.config.ts"]
+  "include": [
+    "packages/shared/src",
+    "packages/core/src",
+    "packages/core/test",
+    "packages/server/test",
+    "packages/server/src",
+    "packages/mcp/src",
+    "vitest.config.ts",
+    "packages/eval/src",
+    "packages/eval/test"
+  ]
 }

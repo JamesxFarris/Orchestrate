@@ -7,6 +7,7 @@
     "packages/core",
     "packages/server",
     "packages/mcp",
+    "packages/eval",
     "packages/city"
   ],
   "scripts": {
@@ -15,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p packages/city/tsconfig.json",
     "daemon": "node --disable-warning=ExperimentalWarning --import tsx packages/server/src/main.ts",
     "mcp": "node --disable-warning=ExperimentalWarning --import tsx packages/mcp/src/main.ts",
-    "city": "npm run dev -w @orchestrate/city"
+    "city": "npm run dev -w @orchestrate/city",
+    "eval": "node --disable-warning=ExperimentalWarning --import tsx packages/eval/src/main.ts"
   },
   "devDependencies": {
     "@gltf-transform/core": "4.5.1",
