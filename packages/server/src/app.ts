@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
+import { SAFE_REF } from '@orchestrate/shared';
 import { z } from 'zod';
 import type { Backend } from './backend.ts';
 
@@ -19,7 +20,7 @@ export function localOrigins(ports: number[]): Set<string> {
 const SubmitBody = z.object({
   prompt: z.string().min(3).max(20_000),
   autoApprove: z.boolean().optional(),
-  baseRef: z.string().max(200).optional(),
+  baseRef: z.string().regex(SAFE_REF, 'baseRef must be a branch, tag or commit').optional(),
 });
 
 /** A WebSocket client this far behind is dropped rather than buffered without limit. */

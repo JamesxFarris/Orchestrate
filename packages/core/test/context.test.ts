@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RunState, TaskState } from '@orchestrate/shared';
@@ -45,6 +45,16 @@ describe('project context, read from a commit', () => {
     mkdirSync(path.join(fx.repo, 'docs', 'adr'), { recursive: true });
     commit(fx.repo, { 'docs/adr/0001-event-bus.md': '# 1', 'docs/adr/0002-save-format.md': '# 2', 'docs/adr/README.md': 'index' });
     expect(await adrDigest(fx.repo, 'adrs', 'docs/adr')).toEqual({ next: '0003', lines: ['- docs/adr/0002-save-format.md', '- docs/adr/0001-event-bus.md'] });
+  });
+
+  it('never lets a ref reach git as an option (git show --output=<file> would write anywhere)', async () => {
+    const fx = repo();
+    commit(fx.repo, { 'AGENTS.md': 'guide' });
+    const target = path.join(fx.root, 'pwned');
+    expect(await loadAgentDoc(fx.repo, `--output=${target}`, undefined, 6000)).toBeUndefined();
+    expect(await adrDigest(fx.repo, '--all', 'docs/adr')).toEqual({ next: '0001', lines: [] });
+    expect(readdirSync(fx.root).filter((f) => f.startsWith('pwned'))).toEqual([]);
+    expect((await loadAgentDoc(fx.repo, 'HEAD~0', undefined, 6000))?.text).toBe('guide');
   });
 });
 
