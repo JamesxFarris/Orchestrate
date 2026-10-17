@@ -1,0 +1,338 @@
+{
+  "shop_a": {
+    "width": 3.53,
+    "depth": 3.76,
+    "height": 5.17,
+    "parts": 1
+  },
+  "shop_b": {
+    "width": 3.88,
+    "depth": 3.76,
+    "height": 5.17,
+    "parts": 1
+  },
+  "shop_c": {
+    "width": 3.53,
+    "depth": 4.36,
+    "height": 3.57,
+    "parts": 1
+  },
+  "shop_d": {
+    "width": 3.36,
+    "depth": 3.6,
+    "height": 5.17,
+    "parts": 1
+  },
+  "shop_e": {
+    "width": 6.56,
+    "depth": 4.03,
+    "height": 3.57,
+    "parts": 1
+  },
+  "shop_f": {
+    "width": 3.36,
+    "depth": 4.12,
+    "height": 6.77,
+    "parts": 1
+  },
+  "shop_g": {
+    "width": 3.88,
+    "depth": 3.69,
+    "height": 6.77,
+    "parts": 1
+  },
+  "shop_h": {
+    "width": 3.53,
+    "depth": 4.03,
+    "height": 5.17,
+    "parts": 1
+  },
+  "shop_i": {
+    "width": 4.96,
+    "depth": 5.21,
+    "height": 6.72,
+    "parts": 1
+  },
+  "shop_j": {
+    "width": 8.33,
+    "depth": 5.36,
+    "height": 6.77,
+    "parts": 1
+  },
+  "shop_k": {
+    "width": 8.33,
+    "depth": 3.77,
+    "height": 5.88,
+    "parts": 1
+  },
+  "shop_l": {
+    "width": 5.48,
+    "depth": 5.61,
+    "height": 9.08,
+    "parts": 1
+  },
+  "shop_m": {
+    "width": 4.96,
+    "depth": 4.97,
+    "height": 12.6,
+    "parts": 1
+  },
+  "shop_n": {
+    "width": 9.28,
+    "depth": 7.28,
+    "height": 9.92,
+    "parts": 1
+  },
+  "tower_a": {
+    "width": 5.44,
+    "depth": 5.44,
+    "height": 11.52,
+    "parts": 1
+  },
+  "tower_b": {
+    "width": 5.44,
+    "depth": 5.44,
+    "height": 17.92,
+    "parts": 1
+  },
+  "tower_c": {
+    "width": 5.12,
+    "depth": 5.55,
+    "height": 16.32,
+    "parts": 1
+  },
+  "tower_d": {
+    "width": 5.12,
+    "depth": 5.55,
+    "height": 21.88,
+    "parts": 1
+  },
+  "tower_e": {
+    "width": 5.18,
+    "depth": 4.97,
+    "height": 16.32,
+    "parts": 1
+  },
+  "parasol_a": {
+    "width": 1.39,
+    "depth": 1.6,
+    "height": 1.8,
+    "parts": 1
+  },
+  "parasol_b": {
+    "width": 1.39,
+    "depth": 1.6,
+    "height": 1.8,
+    "parts": 1
+  },
+  "car_sedan": {
+    "width": 1.35,
+    "depth": 2.29,
+    "height": 1.17,
+    "parts": 1
+  },
+  "car_suv": {
+    "width": 1.35,
+    "depth": 2.43,
+    "height": 1.17,
+    "parts": 1
+  },
+  "car_hatchback_sports": {
+    "width": 1.17,
+    "depth": 2.57,
+    "height": 0.99,
+    "parts": 1
+  },
+  "car_taxi": {
+    "width": 1.35,
+    "depth": 2.47,
+    "height": 1.35,
+    "parts": 1
+  },
+  "car_police": {
+    "width": 1.35,
+    "depth": 2.79,
+    "height": 1.17,
+    "parts": 1
+  },
+  "car_van": {
+    "width": 1.35,
+    "depth": 2.48,
+    "height": 1.21,
+    "parts": 1
+  },
+  "car_delivery": {
+    "width": 1.35,
+    "depth": 2.92,
+    "height": 1.48,
+    "parts": 1
+  },
+  "car_truck": {
+    "width": 1.35,
+    "depth": 2.65,
+    "height": 1.17,
+    "parts": 1
+  },
+  "car_ambulance": {
+    "width": 1.35,
+    "depth": 2.92,
+    "height": 1.62,
+    "parts": 1
+  },
+  "car_garbage_truck": {
+    "width": 1.44,
+    "depth": 3.1,
+    "height": 1.44,
+    "parts": 1
+  },
+  "streetlight": {
+    "width": 0.33,
+    "depth": 1.46,
+    "height": 4.39,
+    "parts": 1
+  },
+  "streetlight_double": {
+    "width": 0.33,
+    "depth": 2.76,
+    "height": 3.9,
+    "parts": 1
+  },
+  "traffic_light": {
+    "width": 0.76,
+    "depth": 0.58,
+    "height": 3.35,
+    "parts": 1
+  },
+  "bench": {
+    "width": 1.37,
+    "depth": 0.77,
+    "height": 0.89,
+    "parts": 1
+  },
+  "pillar": {
+    "width": 0.59,
+    "depth": 0.59,
+    "height": 1.95,
+    "parts": 1
+  },
+  "column": {
+    "width": 0.66,
+    "depth": 0.66,
+    "height": 1.92,
+    "parts": 1
+  },
+  "urn": {
+    "width": 0.45,
+    "depth": 0.45,
+    "height": 0.65,
+    "parts": 1
+  },
+  "flower_purplea": {
+    "width": 0.38,
+    "depth": 0.43,
+    "height": 0.58,
+    "parts": 2
+  },
+  "flower_reda": {
+    "width": 0.38,
+    "depth": 0.43,
+    "height": 0.7,
+    "parts": 2
+  },
+  "flower_yellowa": {
+    "width": 0.38,
+    "depth": 0.43,
+    "height": 0.46,
+    "parts": 2
+  },
+  "flower_purpleb": {
+    "width": 0.5,
+    "depth": 0.57,
+    "height": 0.5,
+    "parts": 2
+  },
+  "flower_redb": {
+    "width": 0.5,
+    "depth": 0.57,
+    "height": 0.62,
+    "parts": 2
+  },
+  "flower_yellowb": {
+    "width": 0.5,
+    "depth": 0.57,
+    "height": 0.38,
+    "parts": 2
+  },
+  "bush": {
+    "width": 1.45,
+    "depth": 1.45,
+    "height": 0.86,
+    "parts": 1
+  },
+  "bush_large": {
+    "width": 0.9,
+    "depth": 0.81,
+    "height": 0.58,
+    "parts": 1
+  },
+  "planter": {
+    "width": 1.35,
+    "depth": 1.17,
+    "height": 0.48,
+    "parts": 2
+  },
+  "statue_column": {
+    "width": 0.72,
+    "depth": 0.72,
+    "height": 2.4,
+    "parts": 3
+  },
+  "statue_obelisk": {
+    "width": 0.74,
+    "depth": 0.74,
+    "height": 2.1,
+    "parts": 2
+  },
+  "statue_head": {
+    "width": 1.74,
+    "depth": 1.33,
+    "height": 2.4,
+    "parts": 3
+  },
+  "statue_ring": {
+    "width": 1.44,
+    "depth": 0.96,
+    "height": 1.91,
+    "parts": 2
+  },
+  "tree_oak": {
+    "width": 1.54,
+    "depth": 1.78,
+    "height": 2.94,
+    "parts": 2
+  },
+  "tree_round": {
+    "width": 1.81,
+    "depth": 1.57,
+    "height": 4.1,
+    "parts": 2
+  },
+  "tree_cone": {
+    "width": 1.27,
+    "depth": 1.27,
+    "height": 3.43,
+    "parts": 2
+  },
+  "tree_oak_autumn": {
+    "width": 1.54,
+    "depth": 1.78,
+    "height": 2.94,
+    "parts": 2
+  },
+  "tree_detailed_autumn": {
+    "width": 2.03,
+    "depth": 1.83,
+    "height": 3.2,
+    "parts": 3
+  }
+}

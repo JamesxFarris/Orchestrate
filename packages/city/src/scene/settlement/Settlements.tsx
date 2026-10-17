@@ -6,7 +6,9 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
-import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
+import { RingRoad, TownPieces } from './Town.tsx';
+import { layoutTown } from './townLayout.ts';
+import { HOUSES, LANE_HALF_WIDTH, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
 
 /**
  * Each district's settlement: houses from Kenney's Fantasy Town Kit (roofs in shades of the squad
@@ -58,8 +60,14 @@ export function Settlements({ layout }: { layout: CityLayout }) {
 
   const settlements = useMemo(() => {
     const level = new Map(progress?.districts.map((d) => [d.squad, d.settlement.level]));
-    return layout.districts.map((d) => ({ district: d, ...layoutSettlement(d, PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1) }));
+    return layout.districts.map((d) => {
+      const lvl = PREVIEW_LEVEL ?? level.get(d.squad.id) ?? 1;
+      const village = layoutSettlement(d, lvl);
+      return { district: d, ...village, town: layoutTown(d, lvl, village) };
+    });
   }, [layout, progress]);
+
+  const townPieces = useMemo(() => settlements.flatMap((s) => s.town.pieces), [settlements]);
 
   const houses = useMemo<Placed[]>(() => {
     const slots = new Map<HouseName, number>();
@@ -189,8 +197,10 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           );
         }),
       )}
-      {settlements.map(({ district, features }) => (
+      <TownPieces pieces={townPieces} />
+      {settlements.map(({ district, features, town }) => (
         <group key={district.squad.id}>
+          {town.road && <RingRoad x={district.x} z={district.z} road={town.road} />}
           {features.lanes.map((lane) => (
             <LaneArc key={lane.radius} x={district.x} z={district.z} lane={lane} />
           ))}
@@ -216,7 +226,7 @@ function LaneArc({ x, z, lane }: { x: number; z: number; lane: Lane }) {
   // RingGeometry sweeps in its own XY plane; laid flat (rotate -90° about x), angle a maps to -a.
   return (
     <mesh position={[x, 0.075, z]} rotation-x={-Math.PI / 2} receiveShadow>
-      <ringGeometry args={[lane.radius - 1.1, lane.radius + 1.1, 64, 1, -(lane.start + lane.length), lane.length]} />
+      <ringGeometry args={[lane.radius - LANE_HALF_WIDTH, lane.radius + LANE_HALF_WIDTH, 64, 1, -(lane.start + lane.length), lane.length]} />
       <meshStandardMaterial map={paving} roughness={0.9} polygonOffset polygonOffsetFactor={-3} polygonOffsetUnits={-3} />
     </mesh>
   );
@@ -263,3 +273,4 @@ function Lamp({ at, post, material }: { at: Point; post?: THREE.BufferGeometry; 
     </group>
   );
 }
+

@@ -68,6 +68,38 @@ describe('buildParkLayout', () => {
     }
   });
 
+  it('lines each footpath with street lamps, evenly spaced, beside the path with the arm reaching over it', () => {
+    const paths = [...park.paths.values()];
+    const nearestOnPaths = (x: number, z: number) => {
+      let best = { d: Infinity, x: 0, z: 0 };
+      for (const line of paths)
+        for (const [i, p] of line.entries()) {
+          if (i === 0) continue;
+          const a = line[i - 1]!;
+          const dx = p.x - a.x;
+          const dz = p.y - a.y;
+          const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.y) * dz) / (dx * dx + dz * dz || 1)));
+          const q = { x: a.x + t * dx, z: a.y + t * dz };
+          const d = Math.hypot(x - q.x, z - q.z);
+          if (d < best.d) best = { d, ...q };
+        }
+      return best;
+    };
+    // a few per path, not one per path vertex
+    expect(park.lamps.length).toBeGreaterThanOrEqual(squads.length * 2);
+    expect(park.lamps.length).toBeLessThan(squads.length * 8);
+    for (const [i, l] of park.lamps.entries()) {
+      const near = nearestOnPaths(l.x, l.z);
+      expect(near.d).toBeGreaterThan(PATH_WIDTH / 2);
+      expect(near.d).toBeLessThan(PATH_WIDTH / 2 + 2);
+      // the arm (local +x, turned by rot about y) reaches over the path: its tip is nearer the path than the post
+      const tip = { x: l.x + Math.cos(l.rot) * 1.5, z: l.z - Math.sin(l.rot) * 1.5 };
+      expect(nearestOnPaths(tip.x, tip.z).d).toBeLessThan(near.d - 1);
+      for (const other of park.lamps.slice(i + 1)) expect(dist(l, other)).toBeGreaterThan(4);
+      for (const t of park.trees) expect(dist(l, t)).toBeGreaterThan(2.9);
+    }
+  });
+
   it('gives each squad room for its task trees, and routes between any two towers', () => {
     for (const s of squads) expect(park.taskSlots.get(s)!.length).toBeGreaterThanOrEqual(10);
     const route = park.route('gameplay-dev', 'render-qa');

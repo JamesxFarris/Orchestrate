@@ -1,0 +1,13 @@
+{
+  "tree": {
+    "height": 1,
+    "canopyWidth": 1.05
+  },
+  "lamp": {
+    "height": 1,
+    "head": {
+      "x": 0.36,
+      "y": 0.96
+    }
+  }
+}
