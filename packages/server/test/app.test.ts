@@ -52,6 +52,9 @@ describe('daemon API (demo backend)', () => {
   it('validates input and state transitions', async () => {
     const { app } = await setup();
     expect((await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: '' } })).statusCode).toBe(400);
+    // baseRef becomes a git argument: an option-looking or path-carrying ref is refused before it gets there
+    for (const baseRef of ['--output=/tmp/x', '-c', 'main:secret.txt', 'a..b', 'main branch'])
+      expect((await app.inject({ method: 'POST', url: '/api/runs', payload: { prompt: 'Add a wave spawner', baseRef } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'POST', url: '/api/runs/nope/approve' })).statusCode).toBe(409);
     expect((await app.inject({ url: '/api/runs/nope' })).statusCode).toBe(404);
     expect((await app.inject({ url: '/api/runs/nope/events' })).statusCode).toBe(404);
