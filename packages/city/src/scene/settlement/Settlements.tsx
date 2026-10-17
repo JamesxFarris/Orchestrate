@@ -6,6 +6,7 @@ import type { CityLayout } from '../../layout.ts';
 import { PALETTE } from '../../palette.ts';
 import { useCity } from '../../store.ts';
 import { usePavingTexture } from '../Ground.tsx';
+import { Market } from './Market.tsx';
 import { HOUSES, layoutSettlement, type HouseName, type HouseSpot, type Lane, type Point } from './settlementLayout.ts';
 
 /**
@@ -206,6 +207,7 @@ export function Settlements({ layout }: { layout: CityLayout }) {
           ))}
         </group>
       ))}
+      <Market settlements={settlements} />
     </group>
   );
 }
