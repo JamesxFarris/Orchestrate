@@ -164,6 +164,18 @@ npm run typecheck
 ORCH_LIVE=1 npx vitest run packages/core/test/live.test.ts   # opt-in: real agents, about $0.50
 ```
 
+### Running on a budget
+
+Every agent is a full Claude Code session, and a run starts many of them (plan, plan reviews, QA, implementation and code review per task). On a subscription such as Claude Pro they draw on your plan's usage limits rather than a bill; with an API key they are billed. Either way, `presets/budget.team.yaml` stretches it:
+
+- **A model per job** (`jobs:`): Sonnet for planning and building; Haiku for plan reviews, code reviews and rulings. A role's own `runtime:` still wins over its job's.
+- **Short prompts for reviewers** (`policy.leanReviews`, on by default): jobs that only read and give a verdict get a short system prompt instead of Claude Code's full one, which is most of a short session's usage.
+- **A small Tech Circle**: the VP and the architect, instead of every lead reviewing every plan.
+- **A usage cap per run** (`policy.maxRunUsd`): once reached, no new planning, QA or implementation starts. Reviews still run, so work already built can merge, and the run reports where it stopped.
+- **A plain run report** (`policy.summary: plain`): the outcomes, with no agent writing them up.
+
+Dollar figures (`maxRunUsd`, `maxBudgetUsd`, the cost on each run) are API-equivalent; on a subscription they measure your share of the plan's limits. `npm run daemon -- --team presets/budget.team.yaml --repo ../your-app` runs with it. Demo mode (`--demo`) and the scripted eval use no AI at all.
+
 ### Evals: is the harness getting better?
 
 Tests check code; evals check the agents' behaviour, and so the harness around them. `packages/eval` runs whole requests end to end against small sample projects and scores the outcome:
@@ -172,6 +184,7 @@ Tests check code; evals check the agents' behaviour, and so the harness around t
 npm run eval                          # scripted team, free: every scenario must score perfectly
 npm run eval -- --live                # real agents; costs API money (a few dollars per scenario)
 npm run eval -- --live --repeat 3     # agents vary, so judge pass rates over several runs
+npm run eval -- --live --budget       # real agents on the budget presets models and limits (cheapest live check)
 npm run eval -- --only slugify        # one scenario; also --model <id>, --keep, --no-compare
 ```
 

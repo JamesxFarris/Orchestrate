@@ -80,6 +80,8 @@ function countTests(scenario: Scenario): number {
 export interface RunOptions {
   runner: AgentRunner;
   model: string;
+  /** Use the budget preset's per-job models and limits. */
+  budget?: boolean;
   /** Keep the scenario's temp folder (repo, worktrees) for inspection. */
   keep?: boolean;
 }
@@ -89,7 +91,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
   const root = mkdtempSync(path.join(os.tmpdir(), `orch-eval-${scenario.id}-`));
   const repo = startRepo(scenario, root);
   const store = new Store(':memory:');
-  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model)), runner: opts.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
+  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model, opts.budget)), runner: opts.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
   const events: OrchestrateEvent[] = [];
   orch.bus.on((e) => events.push(e));
 

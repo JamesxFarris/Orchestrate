@@ -30,6 +30,19 @@ export const AgentRuntime = z.strictObject({
 });
 export type AgentRuntime = z.infer<typeof AgentRuntime>;
 
+/**
+ * Some runtime settings, layered over the team's defaults (a role's or a job's). Deliberately
+ * without defaults of its own: AgentRuntime.partial() still fills in every field it omits, so an
+ * override of just the model reset the turn and budget limits to the built-in ones.
+ */
+export const RuntimeOverride = z.strictObject({
+  model: z.string().optional(),
+  effort: Effort.optional(),
+  maxTurns: z.number().int().positive().optional(),
+  maxBudgetUsd: z.number().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 export const RoleConfig = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/, 'role ids are lowercase-kebab'),
   title: z.string(),
@@ -41,7 +54,7 @@ export const RoleConfig = z.strictObject({
   enabled: z.boolean().default(true),
   /** Extra standing instructions appended to the role prompt. */
   instructions: z.string().optional(),
-  runtime: AgentRuntime.partial().optional(),
+  runtime: RuntimeOverride.optional(),
 });
 export type RoleConfig = z.infer<typeof RoleConfig>;
 
@@ -81,8 +94,22 @@ export const Policy = z.strictObject({
   circleRevisionRounds: z.number().int().min(0).default(2),
   requireHumanApproval: z.boolean().default(true),
   maxParallel: z.number().int().positive().default(3),
+  /**
+   * Stop starting agents once a run's usage reaches this many dollars (API-equivalent: on a
+   * subscription it is the share of your plan's limits, not a bill). Work already merged is kept.
+   */
+  maxRunUsd: z.number().positive().optional(),
+  /** The run report: "agent" asks the VP to write it (and name follow-ups); "plain" lists outcomes, no agent. */
+  summary: z.enum(['agent', 'plain']).default('agent'),
+  /**
+   * Reviews, rulings and the run report only read and give a verdict, so they get a short system
+   * prompt instead of Claude Code's full one, which is most of a short session's usage.
+   * Planning, QA and implementing always keep the full prompt.
+   */
+  leanReviews: z.boolean().default(true),
 });
 export type Policy = z.infer<typeof Policy>;
+export type Job = 'plan' | 'circle' | 'qa' | 'implement' | 'review' | 'ruling' | 'summary';
 
 export const ProjectConfig = z.strictObject({
   name: z.string(),
@@ -120,6 +147,13 @@ export const TeamConfig = z.strictObject({
   version: z.literal(1),
   project: ProjectConfig,
   defaults: AgentRuntime.default(AgentRuntime.parse({})),
+  /**
+   * Runtime per kind of work, over `defaults` (a role's own `runtime` still wins). The lever for
+   * usage: a strong model where it counts (planning, implementing), a light one for reading and
+   * judging. Jobs: plan, circle (plan review), qa, implement, review (code review), ruling
+   * (escalations), summary (the run report).
+   */
+  jobs: z.partialRecord(z.enum(['plan', 'circle', 'qa', 'implement', 'review', 'ruling', 'summary']), RuntimeOverride).default({}),
   gates: GateConfig,
   policy: Policy.default(Policy.parse({})),
   squads: z.array(SquadConfig).min(1),

@@ -489,3 +489,81 @@ describe('redRejection: what counts as tests failing first', () => {
     expect(redRejection(run({ output: 'test/sum.test.js:3\nSyntaxError: Unexpected end of input' }), files)).toMatch(/does not parse/);
   });
 });
+
+describe('running on a budget', () => {
+  const policy = { maxRetries: 1, maxChangedLines: 200, circleRevisionRounds: 1, requireHumanApproval: false, maxParallel: 1 };
+  const runnerOf = (env: ReturnType<typeof setup>) => (env.orch as unknown as { runner: FakeRunner }).runner;
+  const twoTasks = planOf(codeTask({ id: 'sum' }), codeTask({ id: 'use', dependsOn: ['sum'] }));
+
+  it('picks the model per job: strong for planning and building, light for judging', async () => {
+    const env = setup(team(sumPlan), { jobs: { plan: { model: 'big' }, implement: { model: 'big' }, qa: { model: 'mid' }, circle: { model: 'small' }, review: { model: 'small' }, summary: { model: 'small' } } });
+    await env.orch.wait(env.orch.submit('add sum').id);
+    const models = Object.fromEntries(runnerOf(env).calls.map((c) => [`${c.agentId}:${c.systemPrompt.includes('Tech Circle') ? 'circle' : c.systemPrompt.includes('You review your squad') ? 'review' : c.systemPrompt.includes('A run you planned') ? 'summary' : c.systemPrompt.includes('acceptance tests BEFORE') ? 'qa' : c.systemPrompt.includes('You lead engineering') ? 'plan' : 'implement'}`, c.runtime.model]));
+    expect(models).toMatchObject({ 'boss:plan': 'big', 'arch:circle': 'small', 'core-qa:qa': 'mid', 'core-dev:implement': 'big', 'core-lead:review': 'small', 'boss:summary': 'small' });
+  });
+
+  it("lets a role's own runtime win over its job's", async () => {
+    const roles = fixtureOrg().config.roles.map((r) => (r.id === 'core-lead' ? { ...r, runtime: { model: 'lead-favourite' } } : r));
+    const env = setup(team(sumPlan), { roles, jobs: { review: { model: 'small' } } });
+    await env.orch.wait(env.orch.submit('add sum').id);
+    expect(runnerOf(env).calls.find((c) => c.agentId === 'core-lead' && c.systemPrompt.includes('You review your squad'))!.runtime.model).toBe('lead-favourite');
+  });
+
+  it('gives reading-and-judging jobs the short prompt, and building jobs the full one', async () => {
+    const env = setup(team(sumPlan));
+    await env.orch.wait(env.orch.submit('add sum').id);
+    const lean = (pick: (s: string) => boolean) => runnerOf(env).calls.filter((c) => pick(c.systemPrompt)).map((c) => !!c.leanPrompt);
+    expect(lean((s) => s.includes('Tech Circle'))).toEqual(expect.arrayContaining([true]));
+    expect(lean((s) => s.includes('You review your squad'))).toEqual([true]);
+    expect(lean((s) => s.includes('A run you planned has finished'))).toEqual([true]);
+    expect(lean((s) => s.includes('You lead engineering'))).toEqual([false]);
+    expect(lean((s) => s.includes('acceptance tests BEFORE'))).toEqual([false]);
+    const off = setup(team(sumPlan), { policy: { ...policy, leanReviews: false } });
+    await off.orch.wait(off.orch.submit('add sum').id);
+    expect(runnerOf(off).calls.every((c) => !c.leanPrompt)).toBe(true);
+  });
+
+  it('writes a plain run report without an agent when asked', async () => {
+    const env = setup(team(sumPlan), { policy: { ...policy, summary: 'plain' } });
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(runnerOf(env).calls.some((c) => c.systemPrompt.includes('A run you planned has finished'))).toBe(false);
+    expect(run.summary).toMatch(/Run finished[\s\S]*sum \(core\): merged/);
+  });
+
+  it('stops at the usage cap while planning: nothing is built', async () => {
+    // the plan alone costs more than the cap, so the Tech Circle never convenes
+    const env = setup(team(sumPlan, { plan: () => ({ structured: sumPlan, costUsd: 0.6 }) }), { policy: { ...policy, maxRunUsd: 0.5 } });
+    const run = await env.orch.wait(env.orch.submit('add sum').id);
+    expect(run.status).toBe('failed');
+    expect(run.detail).toBe('usage cap reached: $0.60 of $0.50');
+    expect(runnerOf(env).calls.some((c) => c.systemPrompt.includes('Tech Circle'))).toBe(false);
+  });
+
+  it('stops at the usage cap mid-run: keeps what merged, skips the rest, reports why', async () => {
+    // every implementer session costs $1; the cap is reached once the first task is built
+    const env = setup(
+      team(twoTasks, {
+        qa: (ctx) => {
+          ctx.write(`test/${ctx.inv.taskId}.test.js`, sumTest.replace('../src/sum.js', `../src/${ctx.inv.taskId}.js`));
+          ctx.submit('tests');
+        },
+        implement: (ctx) => {
+          ctx.write(`src/${ctx.inv.taskId}.js`, sumImpl);
+          ctx.submit('done');
+          return { costUsd: 1 };
+        },
+      }),
+      { policy: { ...policy, maxRunUsd: 0.9 } },
+    );
+    const run = await env.orch.wait(env.orch.submit('add sum and use').id);
+    expect(run.tasks.map((t) => [t.contract.id, t.status])).toEqual([
+      ['sum', 'merged'],
+      ['use', 'skipped'],
+    ]);
+    expect(run.tasks[1]!.detail).toMatch(/usage cap reached/);
+    expect(run.status).toBe('completed');
+    expect(run.detail).toBe('1/2 tasks merged; stopped at the usage cap ($0.90)');
+    // no agent was asked to write the report once the cap was reached
+    expect(runnerOf(env).calls.some((c) => c.systemPrompt.includes('A run you planned has finished'))).toBe(false);
+  });
+});

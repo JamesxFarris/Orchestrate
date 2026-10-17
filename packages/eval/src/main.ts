@@ -13,6 +13,7 @@ import { scriptedTeam } from './scriptedTeam.ts';
  * npm run eval -- --live               real agents (costs API money, a few dollars per scenario)
  * npm run eval -- --live --repeat 3    each scenario three times (agents vary run to run)
  * npm run eval -- --only slugify       one scenario
+ * npm run eval -- --live --budget     the budget preset's models and limits (cheapest live check)
  * Options: --model <id>, --keep (keep temp repos), --no-compare
  * Results go to .orchestrate/evals/; each scorecard compares with the previous run in the same mode.
  */
@@ -23,6 +24,7 @@ const { values } = parseArgs({
     repeat: { type: 'string', default: '1' },
     only: { type: 'string', multiple: true },
     keep: { type: 'boolean', default: false },
+    budget: { type: 'boolean', default: false },
     'no-compare': { type: 'boolean', default: false },
   },
 });
@@ -42,12 +44,12 @@ const commit = (() => {
   }
 })();
 
-console.log(`[eval] ${mode}${values.live ? ` with ${values.model}` : ''}: ${scenarios.map((s) => s.id).join(', ')} x${repeat}`);
+console.log(`[eval] ${mode}${values.live ? ` with ${values.budget ? 'the budget team' : values.model}` : ''}: ${scenarios.map((s) => s.id).join(', ')} x${repeat}`);
 const results: ScenarioResult[] = [];
 for (const scenario of scenarios) {
   for (let i = 0; i < repeat; i++) {
     const runner = values.live ? new SdkRunner() : scriptedTeam(scenario);
-    const r = await runScenario(scenario, { runner, model: values.model!, keep: values.keep });
+    const r = await runScenario(scenario, { runner, model: values.model!, budget: values.budget, keep: values.keep });
     results.push(r);
     console.log(`[eval] ${scenario.id}${repeat > 1 ? ` #${i + 1}` : ''}: ${r.correct ? 'correct' : 'NOT correct'} (${r.judge.passed}/${r.judge.total}), ${r.status}, $${r.costUsd.toFixed(2)}, ${r.seconds}s`);
   }

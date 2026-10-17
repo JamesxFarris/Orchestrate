@@ -7,7 +7,7 @@ import * as g from './git/git.ts';
 import type { Org } from './org/org.ts';
 import { schedule } from './plan/dag.ts';
 import { validatePlan } from './plan/validatePlan.ts';
-import { CancelledError, Integration, RunContext } from './pipeline/context.ts';
+import { CancelledError, Integration, RunContext, UsageCapError } from './pipeline/context.ts';
 import { executeTask } from './pipeline/taskPipeline.ts';
 import {
   circleReviewPrompt,
@@ -338,9 +338,14 @@ export class Orchestrator {
       await this.executeTasks(ctx, baseRef);
       await this.summarise(ctx);
       const merged = run.tasks.filter((t) => t.status === 'merged').length;
-      this.setStatus(run, merged > 0 ? 'completed' : 'failed', `${merged}/${run.tasks.length} tasks merged`);
+      const capped = ctx.capReached ? `; stopped at the usage cap ($${this.org.policy.maxRunUsd!.toFixed(2)})` : '';
+      this.setStatus(run, merged > 0 ? 'completed' : 'failed', `${merged}/${run.tasks.length} tasks merged${capped}`);
     } catch (err) {
-      if (err instanceof CancelledError || signal.aborted) {
+      if (err instanceof UsageCapError) {
+        // reached while planning: nothing was built
+        for (const t of run.tasks) if (!['merged', 'failed', 'escalated', 'skipped'].includes(t.status)) t.status = 'skipped';
+        this.setStatus(run, 'failed', err.message);
+      } else if (err instanceof CancelledError || signal.aborted) {
         for (const t of run.tasks) if (!['merged', 'failed', 'escalated', 'skipped'].includes(t.status)) t.status = 'skipped';
         this.setStatus(run, 'cancelled', String(signal.reason ?? 'cancelled'));
       } else {
@@ -381,6 +386,7 @@ export class Orchestrator {
     for (let round = 0; round <= org.policy.circleRevisionRounds; round++) {
       this.setStatus(run, 'planning', round ? `revision ${round}` : undefined);
       const res = await ctx.callAgent({
+        job: 'plan',
         role: master,
         activity: 'working',
         cwd: this.repoRoot,
@@ -418,6 +424,7 @@ ${plannerContext}` : masterPlanningSystem(org),
         parseStructured(
           CircleReview,
           await ctx.callAgent({
+            job: 'circle',
             role,
             activity: 'reviewing',
             cwd: this.repoRoot,
@@ -474,6 +481,13 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
       await integration.init(baseRef, org.gates, ctx.signal);
       for (;;) {
         ctx.throwIfCancelled();
+        if (ctx.capReached) {
+          // the usage cap: finish what is running, start nothing new
+          for (const t of run.tasks) if (t.status === 'pending') ctx.setTaskStatus(t, 'skipped', 'usage cap reached');
+          if (running.size === 0) break;
+          await Promise.race(running.values());
+          continue;
+        }
         const { ready, blocked } = schedule(run.tasks, org.policy.maxParallel);
         for (const b of blocked) {
           const t = run.tasks.find((x) => x.contract.id === b.id)!;
@@ -504,6 +518,10 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
       await executeTask(ctx, task);
     } catch (err) {
       if (err instanceof CancelledError) throw err;
+      if (err instanceof UsageCapError) {
+        ctx.setTaskStatus(task, 'skipped', `${err.message} before it finished`);
+        return;
+      }
       console.error(`[task ${task.contract.id}]`, err);
       ctx.setTaskStatus(task, 'failed', err instanceof Error ? err.message.slice(0, 500) : String(err));
     }
@@ -513,8 +531,16 @@ Your previous reply could not be read as a review (${unreadable}). Reply with on
     const { org, run } = ctx;
     const outcomes = run.tasks.map((t) => `- ${t.contract.id} (${t.contract.squad}): ${t.status}${t.detail ? ` — ${t.detail}` : ''}`).join('\n');
     let summary: RunSummary = { summary: `Run finished.\n${outcomes}`, followUps: [] };
+    // "plain": the outcomes are the report, no agent (and none at all once the usage cap is reached)
+    if (org.policy.summary === 'plain' || ctx.capReached) {
+      run.summary = summary.summary;
+      this.save(run);
+      this.bus.emit({ type: 'run.summary', runId: run.id, summary: summary.summary, followUps: [], branch: run.integrationBranch ?? '' });
+      return;
+    }
     try {
       const res = await ctx.callAgent({
+        job: 'summary',
         role: org.master(),
         activity: 'working',
         cwd: this.repoRoot,

@@ -47,6 +47,19 @@ describe('Org (corpsegrinder preset)', () => {
     expect(qaHead.model).toBe('claude-opus-5-5');
   });
 
+  it('layers defaults, then the job, then the role, without an override resetting what it leaves out', () => {
+    const cfg = structuredClone(org.config);
+    cfg.defaults = { ...cfg.defaults, maxTurns: 25, maxBudgetUsd: 1.5 };
+    cfg.jobs = { review: { model: 'light', maxTurns: 10 } };
+    const o = Org.fromConfig(cfg);
+    const lead = o.roles.find((r) => r.kind === 'lead')!;
+    // only the model and turns change for reviews; the team's budget stays (it used to reset to $5)
+    expect(o.runtimeFor(lead, 'review')).toMatchObject({ model: 'light', maxTurns: 10, maxBudgetUsd: 1.5 });
+    expect(o.runtimeFor(lead, 'implement')).toMatchObject({ maxTurns: 25, maxBudgetUsd: 1.5 });
+    // a role's own setting wins over its job's, and also leaves the rest alone
+    expect(o.runtimeFor(o.role('head-of-qa'), 'review')).toMatchObject({ model: 'light', effort: 'medium', maxTurns: 10, maxBudgetUsd: 1.5 });
+  });
+
   it('rejects broken configs with actionable problems', () => {
     const bad = {
       version: 1,
