@@ -93,6 +93,27 @@ The scorecard's "since last run" line compares only Orchestrate runs, so adding 
 | Date | Scenario | Setup | Orchestrate | Claude alone |
 |---|---|---|---|---|
 | 2026-10-18 | tax-endpoint | `--budget`, 1 run | 10/10, $0.48, 136s (after the guard fix) | 10/10, $0.20, 20s |
+| 2026-10-18 | duration-rules, preview-ellipsis, discount-checkout | `--budget` (Sonnet writes code), 3 runs each | 8/9 correct, 104/108 judge tests, $3.34, 1200s | 9/9 correct, 108/108, $0.84, 174s |
+
+**The first real comparison (commit 7c1c93d):** Claude alone was as accurate (more, by one discount-checkout run where Orchestrate scored 12/16) at a quarter of the usage and a seventh of the time.
+
+| Beyond correctness, per run | Orchestrate | Claude alone |
+|---|---|---|
+| Existing tests still passing | 24/24 | 24/24 |
+| Code files changed outside the reference plan | 3 (src/core/text.js) | 1 (src/core/text.js) |
+| Code lines changed | 16 | 20 |
+| Tests left behind | 14 | 2 |
+| Agent sessions | 8 | 1 |
+| Largest context in one session | 37k tokens | 41k tokens |
+| Tokens over all sessions | 880k | 188k |
+| Refused tool calls (total) | 43 (Bash 37, Grep 3, Read 3) | 0 |
+
+What it means:
+- **These scenarios don't need a team.** Every rule is in the request and each fits in one session; Sonnet alone solved all nine in about 20 seconds each. The traps (rules beyond the example, a shared helper, exact edge cases) didn't catch it.
+- **The context advantage didn't show up.** Each Orchestrate session carries Claude Code's own system prompt and tools, so its largest context (37k) is barely below one solo session's (41k), while total tokens are 4.7x. Small, fresh contexts can only pay off on work big enough to fill one session's context, which none of these is.
+- **Orchestrate leaves far more tests behind** (14 vs 2 per run): the one clear gain.
+- **The guard refused 43 calls, 37 of them Bash:** about 4 wasted turns per run. Which commands isn't recorded yet.
+- **The off-task measure overcounts.** It compares against the reference plan's files; both arms sometimes added a helper to src/core/text.js, and the neighbour tests (in the judge) passed every time, so no headline broke. Adding to a shared file isn't the same as breaking it.
 
 The first smoke test found a harness bug rather than a result: Orchestrate scored 0/10 because the scope guard refused the `StructuredOutput` tool, so the planner could never hand in its plan. No earlier live test covered a job that answers with structured output. After the fix, both sides solve the easy scenario; Orchestrate took about 2.4x the usage and 7x the time. Orchestrate also hit 4 guard refusals; which tools they were isn't saved in the report yet.
 
@@ -105,6 +126,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: first real comparison on the three harder scenarios, 3 runs each (results above). Branch docs/first-comparison.
 - 2026-10-18: measures beyond correctness (regressions, scope, lines changed, tests left behind, peak context, tokens, refusals by tool). The core runner now records each session's tokens and peak context. Branch eval/richer-measures.
 - 2026-10-18: first live smoke test (tax-endpoint); it found and led to the StructuredOutput guard fix.
 - 2026-10-18: three harder scenarios (duration-rules, preview-ellipsis, discount-checkout), each with a `flawed/` fix the judge must reject. Branch eval/harder-scenarios.
