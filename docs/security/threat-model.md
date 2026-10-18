@@ -22,4 +22,6 @@ Orchestrate is local-only ([decision 0001](../decisions/0001-local-only.md)). Th
 
 ## Change log
 
+- 2026-10-18: the guard now allows `StructuredOutput`, the tool Claude Code uses to hand back a structured answer (plan, verdict, review). It has no side effects. Refusing it meant no planner, Tech Circle, reviewer or summary could ever answer in a live run; the first live eval found it. Branch fix/structured-output-guard.
+
 - 2026-10-16: audit. Found and fixed baseRef argument injection (`git show --output=<path>`, effective on macOS/Linux; Windows rejects the `:` in the path). Merged to main 2026-10-18 from fix/git-ref-injection. No secrets in the repo or history; `npm audit` clean; UI renders no raw HTML.
