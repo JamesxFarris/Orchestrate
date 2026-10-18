@@ -2,6 +2,7 @@ import { query, type HookCallback, type Options, type SDKMessage } from '@anthro
 import { createScopeGuard, ORCH_MCP_SERVER, orchTool, type GuardDecision } from '../scope/scopeGuard.ts';
 import { createRoleToolServer, RoleToolState } from './roleTools.ts';
 import type { AgentInvocation, AgentResult, AgentRunner } from './types.ts';
+import { contextOf, tokensOf } from './usage.ts';
 
 /** One-line description of a tool call for the live log. */
 export function describeToolCall(name: string, input: unknown): string {
@@ -86,6 +87,7 @@ export class SdkRunner implements AgentRunner {
             break;
           }
         } else if (msg.type === 'assistant') {
+          result.peakContext = Math.max(result.peakContext ?? 0, contextOf(msg.message.usage));
           for (const block of msg.message.content) {
             if (block.type === 'text' && block.text.trim()) {
               inv.onSignal({ kind: 'log', level: 'text', text: block.text.trim().slice(0, 400) });
@@ -94,6 +96,7 @@ export class SdkRunner implements AgentRunner {
         } else if (msg.type === 'result') {
           result.costUsd = msg.total_cost_usd;
           result.turns = msg.num_turns;
+          result.tokens = tokensOf(msg.usage);
           if (msg.subtype === 'success') {
             result.text = msg.result;
             result.structured = msg.structured_output;

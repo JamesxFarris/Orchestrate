@@ -31,6 +31,22 @@ Every rule a judge test checks is stated in the request, so neither side is mark
 
 After a run, the judge tests are copied into a checkout of the code it produced and run with `node --test`. **Correct** means every judge test passed.
 
+## What counts as "better"
+
+Correctness alone would miss most of what Orchestrate claims. Its idea is about context: each agent starts fresh with a small, focused brief, instead of one long session that keeps growing. So every run is measured on:
+
+| Measure | How | What it shows |
+|---|---|---|
+| Correctness | hidden judge tests | did it do what was asked |
+| Regressions | the starting repo's own tests, restored as they were and re-run on the result | did it break what already worked |
+| Scope | code files changed that no task needed (the reference plan's write scopes are the yardstick), and lines changed | did it stay on task, or wander and over-edit |
+| Tests left behind | new `test(` / `it(` lines under `test/` | is the next change safer |
+| Context | the largest prompt any single model request carried (`peak`), and every token over all sessions | does splitting the work keep each agent's context small, and what does the whole job cost in tokens |
+| Refused tool calls, by tool | the scope guard's refusals (for Claude alone, attempts outside the project folder) | is the guard wasting turns, and on what |
+| Usage and time | the SDK's reported cost, wall-clock time | what it costs |
+
+All of it is read from the run itself (the SDK's usage numbers and the result's git diff), so measuring costs no extra usage. The scorecard's "Beyond correctness" table and the HTML page show them side by side.
+
 ## The two arms
 
 | Arm | What runs | Where the result comes from |
@@ -89,6 +105,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: measures beyond correctness (regressions, scope, lines changed, tests left behind, peak context, tokens, refusals by tool). The core runner now records each session's tokens and peak context. Branch eval/richer-measures.
 - 2026-10-18: first live smoke test (tax-endpoint); it found and led to the StructuredOutput guard fix.
 - 2026-10-18: three harder scenarios (duration-rules, preview-ellipsis, discount-checkout), each with a `flawed/` fix the judge must reject. Branch eval/harder-scenarios.
 - 2026-10-18: with `--budget`, Claude alone now uses the team's implement model, so the comparison is like for like (branch eval/solo-budget-model).

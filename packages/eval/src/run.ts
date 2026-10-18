@@ -2,8 +2,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Org, Orchestrator, Store, type AgentRunner } from '@orchestrate/core';
+import { Org, Orchestrator, Store, totalTokens, type AgentResult, type AgentRunner, type TokenUsage } from '@orchestrate/core';
 import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
+import { inspect, type Quality } from './inspect.ts';
 import type { Scenario } from './scenario.ts';
 import type { SoloRunner } from './solo.ts';
 import { evalTeam } from './team.ts';
@@ -36,6 +37,57 @@ export interface ScenarioResult {
   seconds: number;
   /** Why a run did not complete, when it did not. */
   detail?: string;
+  /** Beyond correctness: regressions, scope, size of the change, tests left behind. Absent in older reports. */
+  quality?: Quality;
+  /** Context and tokens over every agent session of the run. Absent in older reports. */
+  context?: ContextUse;
+  /** Tool calls the guard (or, for the solo arm, the folder check) refused, by tool name. */
+  deniedTools?: Record<string, number>;
+}
+
+/**
+ * How much context the work took. `peak` is the largest prompt any single model request carried:
+ * the number Orchestrate means to keep small by giving each agent a fresh, focused session.
+ */
+export interface ContextUse {
+  sessions: number;
+  peak: number;
+  tokens: TokenUsage;
+  /** Every token read or written over all sessions. */
+  total: number;
+}
+
+const NO_TOKENS: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+export function contextUse(sessions: { tokens?: TokenUsage; peakContext?: number }[]): ContextUse {
+  const tokens = sessions.reduce<TokenUsage>((a, s) => {
+    const t = s.tokens ?? NO_TOKENS;
+    return { input: a.input + t.input, output: a.output + t.output, cacheRead: a.cacheRead + t.cacheRead, cacheWrite: a.cacheWrite + t.cacheWrite };
+  }, NO_TOKENS);
+  return { sessions: sessions.length, peak: Math.max(0, ...sessions.map((s) => s.peakContext ?? 0)), tokens, total: totalTokens(tokens) };
+}
+
+/** The tool a refusal names: refusals are logged as "<Tool> <target> — <reason>". */
+const toolOf = (text: string) => text.split(/\s/, 1)[0] || 'unknown';
+
+/** Wraps the team's runner to keep every session's result and every refused tool call. */
+function recorder(inner: AgentRunner) {
+  const sessions: AgentResult[] = [];
+  const deniedTools: Record<string, number> = {};
+  const runner: AgentRunner = {
+    run: async (inv) => {
+      const r = await inner.run({
+        ...inv,
+        onSignal: (sig) => {
+          if (sig.kind === 'log' && sig.level === 'denied') deniedTools[toolOf(sig.text)] = (deniedTools[toolOf(sig.text)] ?? 0) + 1;
+          inv.onSignal(sig);
+        },
+      });
+      sessions.push(r);
+      return r;
+    },
+  };
+  return { runner, sessions, deniedTools };
 }
 
 const GIT = ['-c', 'user.name=eval', '-c', 'user.email=eval@orchestrate.local', '-c', 'core.autocrlf=false'];
@@ -100,8 +152,10 @@ export interface RunOptions {
 export async function runScenario(scenario: Scenario, opts: RunOptions): Promise<ScenarioResult> {
   const root = mkdtempSync(path.join(os.tmpdir(), `orch-eval-${scenario.id}-`));
   const repo = startRepo(scenario, root);
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const recorded = recorder(opts.runner);
   const store = new Store(':memory:');
-  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model, opts.budget)), runner: opts.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
+  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model, opts.budget)), runner: recorded.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
   const events: OrchestrateEvent[] = [];
   orch.bus.on((e) => events.push(e));
 
@@ -119,6 +173,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
   const seconds = Math.round((Date.now() - started) / 1000);
 
   const verdict = judge(scenario, repo, run);
+  const quality = inspect(scenario, repo, start, run.integrationHead ?? run.integrationBranch);
   store.close();
   if (!opts.keep) rmSync(root, { recursive: true, force: true });
 
@@ -146,6 +201,9 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
     costUsd: Math.round(run.costUsd * 100) / 100,
     seconds,
     ...(run.status === 'completed' ? {} : { detail: run.detail }),
+    quality,
+    context: contextUse(recorded.sessions),
+    deniedTools: recorded.deniedTools,
   };
 }
 
@@ -163,6 +221,7 @@ export interface SoloOptions {
 export async function runSolo(scenario: Scenario, opts: SoloOptions): Promise<ScenarioResult> {
   const root = mkdtempSync(path.join(os.tmpdir(), `orch-eval-solo-${scenario.id}-`));
   const repo = startRepo(scenario, root);
+  const start = git(repo, 'rev-parse', 'HEAD');
   const prompt = `${scenario.request}
 
 ${evalTeam(opts.model).project.description}`;
@@ -174,6 +233,7 @@ ${evalTeam(opts.model).project.description}`;
   git(repo, 'add', '-A');
   if (git(repo, 'status', '--porcelain')) git(repo, 'commit', '-q', '-m', 'solo session');
   const verdict = judgeRef(scenario, repo, 'HEAD');
+  const quality = inspect(scenario, repo, start, 'HEAD');
   if (!opts.keep) rmSync(root, { recursive: true, force: true });
 
   return {
@@ -187,10 +247,13 @@ ${evalTeam(opts.model).project.description}`;
     tasks: { total: 1, merged: outcome.ok ? 1 : 0, firstTry: outcome.ok ? 1 : 0, escalated: 0, failed: outcome.ok ? 0 : 1 },
     retries: 0,
     gateFailures: {},
-    denials: 0,
+    denials: Object.values(outcome.deniedTools ?? {}).reduce((n, c) => n + c, 0),
     neededHuman: false,
     costUsd: Math.round(outcome.costUsd * 100) / 100,
     seconds,
     ...(outcome.ok ? {} : { detail: outcome.detail }),
+    quality,
+    context: contextUse([outcome]),
+    deniedTools: outcome.deniedTools ?? {},
   };
 }

@@ -1,5 +1,6 @@
 import type { AgentRuntime } from '@orchestrate/shared';
 import type { ScopeGuardConfig } from '../scope/scopeGuard.ts';
+import type { TokenUsage } from './usage.ts';
 
 /** Signals an agent run streams back while working. */
 export type AgentSignal =
@@ -50,6 +51,10 @@ export interface AgentResult {
   error?: string;
   /** The tools the session started with (from the CLI's init message), to check what the agent could reach. */
   initTools?: string[];
+  /** Tokens the whole session used (from the SDK's result). */
+  tokens?: TokenUsage;
+  /** The largest context any single model request in the session carried, in tokens. */
+  peakContext?: number;
 }
 
 export interface AgentRunner {
