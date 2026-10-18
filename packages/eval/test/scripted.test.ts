@@ -3,7 +3,7 @@ import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { filesIn } from '../src/scenario.ts';
-import { comparison, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
+import { comparison, contextUse, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
  * These tests drive real git in temp folders while other test files do the same in parallel. On
@@ -144,5 +144,55 @@ describe('a like-for-like baseline', () => {
   it('gives Claude alone the model the team writes code with', () => {
     expect(soloModel('claude-opus-5-5')).toBe('claude-opus-5-5');
     expect(soloModel('claude-opus-5-5', true)).toBe('claude-sonnet-5-5');
+  });
+});
+
+describe('measures beyond correctness (free)', REAL_GIT, () => {
+  const scenarios = loadScenarios();
+  const preview = scenarios.find((s) => s.id === 'preview-ellipsis')!;
+
+  it('flags the code a result changed that no task needed, and keeps the existing tests honest', async () => {
+    // the flawed preview fix edits the shared src/core/text.js, which the task never needed
+    const r = await runSolo(preview, {
+      model: 'scripted',
+      runner: async ({ repo }) => {
+        const flawed = path.join(preview.dir, 'flawed');
+        for (const file of filesIn(flawed)) cpSync(path.join(flawed, file), path.join(repo, file));
+        return { ok: true, costUsd: 0, turns: 0 };
+      },
+    });
+    expect(r.quality).toMatchObject({ offScopeFiles: ['src/core/text.js'], changedFiles: 2, testsAdded: 0 });
+    expect(r.quality!.visible).toEqual({ passed: 2, total: 2 });
+    expect(r.quality!.linesChanged).toBeGreaterThan(0);
+  });
+
+  it('counts the tests a run leaves behind and records every session', async () => {
+    const r = await runScenario(preview, { runner: scriptedTeam(preview), model: 'scripted' });
+    expect(r.quality).toMatchObject({ offScopeFiles: [], changedFiles: 1 });
+    expect(r.quality!.testsAdded).toBeGreaterThan(0);
+    expect(r.context!.sessions).toBeGreaterThan(2); // plan, circle, QA, implement, review, ...
+  });
+
+  it('counts refused tool calls by tool', async () => {
+    const { FakeRunner } = await import('@orchestrate/core');
+    const scripted = scriptedTeam(preview);
+    // the implementer first tries the tempting shared file; the guard refuses it
+    const runner = new FakeRunner((ctx) => {
+      if (ctx.inv.systemPrompt.includes('write acceptance tests BEFORE') || !ctx.inv.taskId || ctx.inv.outputSchema) return undefined;
+      ctx.write('src/core/text.js', 'export const truncate = () => "";');
+      return undefined;
+    });
+    const both = { run: async (inv: Parameters<typeof runner.run>[0]) => (await runner.run(inv), scripted.run(inv)) };
+    const r = await runScenario(preview, { runner: both, model: 'scripted' });
+    expect(r.deniedTools!.Write).toBeGreaterThan(0);
+  });
+
+  it('adds up context over sessions, keeping the largest single prompt', () => {
+    const c = contextUse([
+      { tokens: { input: 10, output: 5, cacheRead: 100, cacheWrite: 20 }, peakContext: 120 },
+      { tokens: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }, peakContext: 300 },
+      {},
+    ]);
+    expect(c).toEqual({ sessions: 3, peak: 300, tokens: { input: 11, output: 7, cacheRead: 103, cacheWrite: 24 }, total: 145 });
   });
 });

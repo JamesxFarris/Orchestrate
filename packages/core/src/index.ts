@@ -5,6 +5,7 @@ export { Store } from './store/store.ts';
 export { SdkRunner } from './runner/sdkRunner.ts';
 export { FakeRunner, type FakeAgentContext, type FakeHandler, type FakeReply } from './runner/fakeRunner.ts';
 export type { AgentRunner, AgentInvocation, AgentResult, AgentSignal } from './runner/types.ts';
+export { contextOf, tokensOf, totalTokens, type ApiUsage, type TokenUsage } from './runner/usage.ts';
 export { validatePlan } from './plan/validatePlan.ts';
 export { computeProgress, finishedAt, settlementFor, taskOutcome, GROWTH, type BudgetFor, type RunFacts } from './progress/progress.ts';
 export type { ShipFailure, ShipResult } from './ship/ship.ts';

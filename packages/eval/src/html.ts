@@ -1,5 +1,5 @@
 import type { ScenarioResult } from './run.ts';
-import { byArm, summarize, verdict, type ArmSummary, type EvalReport } from './report.ts';
+import { beyondCorrectness, byArm, summarize, verdict, type ArmSummary, type EvalReport } from './report.ts';
 
 /**
  * The comparison as a page you can open in a browser: headline numbers, then one bar chart per
@@ -24,6 +24,25 @@ export function htmlReport(report: EvalReport): string {
     chart('Cost per run', '$', 0, rows, (a) => perRun(a, a.costUsd), (v) => `$${v.toFixed(2)}`, (a) => `$${a.costUsd.toFixed(2)} over ${a.runs} run${a.runs === 1 ? '' : 's'}`),
     chart('Time per run', 's', 0, rows, (a) => perRun(a, a.seconds), (v) => `${Math.round(v)}s`, (a) => `${a.seconds}s over ${a.runs} run${a.runs === 1 ? '' : 's'}`),
   ];
+  // context charts read per-scenario averages straight from the results (ArmSummary doesn't carry tokens)
+  const ctx = (rs: ScenarioResult[], id: string, f: (r: ScenarioResult) => number) => {
+    const xs = rs.filter((r) => r.scenario === id && r.context).map(f);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+  };
+  const hasContext = report.results.some((r) => r.context && r.context.total > 0);
+  if (hasContext) {
+    const ctxRows = scenarios.map((id) => ({ id, team: { ...of(team, id), v: ctx(team, id, (r) => r.context!.peak) }, solo: { ...of(solo, id), v: ctx(solo, id, (r) => r.context!.peak) } }));
+    const tokRows = scenarios.map((id) => ({ id, team: { ...of(team, id), v: ctx(team, id, (r) => r.context!.total) }, solo: { ...of(solo, id), v: ctx(solo, id, (r) => r.context!.total) } }));
+    const k = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`);
+    charts.push(
+      chart('Largest context in one session (tokens)', 'tok', 0, ctxRows, (a) => (a as ArmSummary & { v: number }).v, k, () => 'the biggest prompt any single model request carried, averaged over runs'),
+      chart('Tokens over all sessions, per run', 'tok', 0, tokRows, (a) => (a as ArmSummary & { v: number }).v, k, () => 'every token read or written by every agent session, averaged over runs'),
+    );
+  }
+  const beyond = beyondCorrectness(team, solo);
+  const beyondTable = beyond.length
+    ? `<h2>Beyond correctness</h2><p class="meta">Averages per run unless noted. Existing tests are the starting repo's own, restored and re-run on the result. Off-task files are code files no task needed. Context is the largest prompt any single model request carried.</p><table class="beyond"><thead><tr><th>Measure</th><th>Orchestrate</th><th>Claude alone</th></tr></thead><tbody>${beyond.map(([l, a, b]) => `<tr><td>${esc(l)}</td><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</tbody></table>`
+    : '';
 
   const tile = (label: string, team: string, solo: string) => `<div class="tile"><div class="tile-label">${label}</div><div class="tile-row"><span class="key k1"></span><span class="tile-name">Orchestrate</span><span class="tile-value">${team}</span></div><div class="tile-row"><span class="key k2"></span><span class="tile-name">Claude alone</span><span class="tile-value">${solo}</span></div></div>`;
   const table = `<table><thead><tr><th>Scenario</th><th>Orchestrate correct</th><th>Claude alone correct</th><th>Orchestrate judge tests</th><th>Claude alone judge tests</th><th>Orchestrate cost / run</th><th>Claude alone cost / run</th><th>Orchestrate time / run</th><th>Claude alone time / run</th></tr></thead><tbody>${rows
@@ -53,6 +72,7 @@ export function htmlReport(report: EvalReport): string {
   </section>
   <div class="legend" aria-hidden="true"><span><span class="key k1"></span>Orchestrate</span><span><span class="key k2"></span>Claude alone</span></div>
   ${charts.join('\n  ')}
+  ${beyondTable}
   <details>
     <summary>Show as a table</summary>
     ${table}
@@ -136,6 +156,9 @@ const CSS = `
 body { margin: 0; background: #fcfcfb; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 .viz-root { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; background: var(--surface-1); color: var(--text-primary); min-height: 100vh; }
 h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 28px 0 4px; }
+table.beyond { display: table; margin-bottom: 16px; }
+table.beyond td:not(:first-child), table.beyond th:not(:first-child) { white-space: normal; }
 .meta, .note { color: var(--text-secondary); font-size: 13px; margin: 0; }
 .note { margin-top: 24px; }
 .verdict { font-size: 17px; margin: 20px 0; }

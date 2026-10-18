@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { contextOf, tokensOf, type TokenUsage } from '@orchestrate/core';
 import { filesIn, type Scenario } from './scenario.ts';
 
 /**
@@ -22,6 +23,11 @@ export interface SoloOutcome {
   costUsd: number;
   turns: number;
   detail?: string;
+  tokens?: TokenUsage;
+  /** The largest context any single model request carried, in tokens. */
+  peakContext?: number;
+  /** Tool calls refused for reaching outside the project folder, by tool name. */
+  deniedTools?: Record<string, number>;
 }
 
 export type SoloRunner = (s: SoloSession) => Promise<SoloOutcome>;
@@ -43,7 +49,7 @@ const insideRepo = (repo: string, p: unknown) => {
  * the scenario repo.
  */
 export const sdkSolo: SoloRunner = async ({ repo, model, prompt }) => {
-  const outcome: SoloOutcome = { ok: false, costUsd: 0, turns: 0 };
+  const outcome: SoloOutcome = { ok: false, costUsd: 0, turns: 0, peakContext: 0, deniedTools: {} };
   try {
     const session = query({
       prompt,
@@ -55,9 +61,11 @@ export const sdkSolo: SoloRunner = async ({ repo, model, prompt }) => {
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         disallowedTools: ['WebFetch', 'WebSearch'],
         permissionMode: 'acceptEdits',
-        canUseTool: async (_tool, input) => {
+        canUseTool: async (tool, input) => {
           const p = (input as Record<string, unknown>).file_path ?? (input as Record<string, unknown>).path ?? (input as Record<string, unknown>).notebook_path;
-          return insideRepo(repo, p) ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: 'Stay inside the project folder.' };
+          if (insideRepo(repo, p)) return { behavior: 'allow', updatedInput: input };
+          outcome.deniedTools![tool] = (outcome.deniedTools![tool] ?? 0) + 1;
+          return { behavior: 'deny', message: 'Stay inside the project folder.' };
         },
         settingSources: [],
         persistSession: false,
@@ -65,9 +73,11 @@ export const sdkSolo: SoloRunner = async ({ repo, model, prompt }) => {
       },
     });
     for await (const msg of session as AsyncIterable<SDKMessage>) {
+      if (msg.type === 'assistant') outcome.peakContext = Math.max(outcome.peakContext ?? 0, contextOf(msg.message.usage));
       if (msg.type !== 'result') continue;
       outcome.costUsd = msg.total_cost_usd;
       outcome.turns = msg.num_turns;
+      outcome.tokens = tokensOf(msg.usage);
       outcome.ok = msg.subtype === 'success' && !msg.is_error;
       if (!outcome.ok) outcome.detail = msg.subtype === 'success' ? msg.result.slice(0, 300) : msg.subtype;
     }

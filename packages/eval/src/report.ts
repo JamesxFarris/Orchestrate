@@ -139,7 +139,60 @@ export function comparison(team: ScenarioResult[], solo: ScenarioResult[]): stri
     '',
     `**Verdict:** ${verdict(t, s, scenarios.length)}`,
   );
+  const rows = beyondCorrectness(team, solo);
+  if (rows.length) {
+    lines.push(
+      '',
+      '### Beyond correctness',
+      '',
+      'Averages per run unless noted. Existing tests are the starting repo\'s own, restored and re-run on the result; off-task files are code files no task needed; context is the largest prompt any single model request carried.',
+      '',
+      '| Measure | Orchestrate | Claude alone |',
+      '|---|---|---|',
+      ...rows.map(([label, a, b]) => `| ${label} | ${a} | ${b} |`),
+    );
+  }
   return lines.join('\n');
+}
+
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const kTokens = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
+const byTool = (rs: ScenarioResult[]) => {
+  const counts: Record<string, number> = {};
+  for (const r of rs) for (const [tool, n] of Object.entries(r.deniedTools ?? {})) counts[tool] = (counts[tool] ?? 0) + n;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([tool, n]) => `${tool} ${n}`).join(', ');
+  return total ? `${total} (${top})` : '0';
+};
+
+/**
+ * The measures besides the judge, side by side: [label, Orchestrate, Claude alone]. Empty when
+ * neither arm recorded them (reports saved before they existed).
+ */
+export function beyondCorrectness(team: ScenarioResult[], solo: ScenarioResult[]): [string, string, string][] {
+  const q = (rs: ScenarioResult[]) => rs.filter((r) => r.quality);
+  const c = (rs: ScenarioResult[]) => rs.filter((r) => r.context);
+  if (!q(team).length && !q(solo).length) return [];
+  const visible = (rs: ScenarioResult[]) => {
+    const passed = q(rs).reduce((n, r) => n + r.quality!.visible.passed, 0);
+    const total = q(rs).reduce((n, r) => n + r.quality!.visible.total, 0);
+    return total ? `${passed}/${total}` : '–';
+  };
+  const offTask = (rs: ScenarioResult[]) => {
+    const files = q(rs).flatMap((r) => r.quality!.offScopeFiles);
+    return files.length ? `${files.length} (${[...new Set(files)].join(', ')})` : '0';
+  };
+  const both = (f: (rs: ScenarioResult[]) => string): [string, string] => [f(team), f(solo)];
+  return [
+    ['Existing tests still passing (total)', ...both(visible)],
+    ['Code files changed outside the task (total)', ...both(offTask)],
+    ['Code lines changed', ...both((rs) => String(Math.round(avg(q(rs).map((r) => r.quality!.linesChanged)))))],
+    ['Tests left behind', ...both((rs) => String(Math.round(avg(q(rs).map((r) => r.quality!.testsAdded)))))],
+    ['Agent sessions', ...both((rs) => String(Math.round(avg(c(rs).map((r) => r.context!.sessions)))))],
+    ['Largest context in one session', ...both((rs) => `${kTokens(avg(c(rs).map((r) => r.context!.peak)))} tokens`)],
+    ['Tokens over all sessions', ...both((rs) => kTokens(avg(c(rs).map((r) => r.context!.total))))],
+    ['Refused tool calls (total, by tool)', ...both(byTool)],
+  ];
 }
 
 /** The comparison in one sentence: accuracy first, then cost, then how far to trust it. */
