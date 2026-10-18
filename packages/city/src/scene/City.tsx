@@ -1,7 +1,7 @@
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, PerformanceMonitor } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { Suspense, useEffect, useMemo } from 'react';
+import { Bloom, EffectComposer, SMAA, Vignette } from '@react-three/postprocessing';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { layoutCity, PLATFORM_RADIUS } from '../layout.ts';
@@ -56,8 +56,9 @@ function Sky() {
       }),
     [],
   );
+  // drawn after the opaque scene, so the depth test skips every pixel the city already covers
   return (
-    <mesh material={material} renderOrder={-1}>
+    <mesh material={material} renderOrder={1}>
       <sphereGeometry args={[700, 32, 16]} />
     </mesh>
   );
@@ -93,6 +94,14 @@ function Environment() {
 const DEBUG = new URLSearchParams(location.search);
 const off = (k: string) => DEBUG.get(k) === '0';
 
+/**
+ * Fill rate is what slows the city down (bloom and antialiasing run per pixel). A retina screen
+ * renders at 1.5x at most, and PerformanceMonitor slides toward 1x when frames drop. At 1x, edges
+ * are smoothed by SMAA, a post pass that costs a fraction of 4x MSAA on integrated GPUs; above that
+ * the extra pixels already do the job.
+ */
+const MAX_DPR = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, 1.5);
+
 export function City() {
   const team = useCity((s) => s.team);
   const select = useCity((s) => s.select);
@@ -100,15 +109,22 @@ export function City() {
   const park = useMemo(() => (layout ? buildParkLayout(layout) : undefined), [layout]);
   const sun = SUN_DIR.clone().multiplyScalar(150);
   const reach = PLATFORM_RADIUS * 0.8;
+  const [dpr, setDpr] = useState(MAX_DPR);
+  const fx = !off('fx');
 
   return (
     <Canvas
       shadows
       camera={{ position: [118, 96, 138], fov: 36, near: 1, far: 2000 }}
-      dpr={[1, 2]}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      dpr={dpr}
+      // with post-processing on, the composer renders to its own buffers, so a multisampled canvas would be wasted work
+      gl={{ antialias: !fx, powerPreference: 'high-performance' }}
       onPointerMissed={() => select(undefined)}
     >
+      <PerformanceMonitor
+        onChange={({ factor }) => setDpr(Math.round((1 + (MAX_DPR - 1) * factor) * 10) / 10)}
+        onFallback={() => setDpr(1)}
+      />
       <color attach="background" args={[PALETTE.skyHorizon]} />
       <fogExp2 attach="fog" args={[PALETTE.skyHorizon, 0.0016]} />
       {!off('sky') && <Sky />}
@@ -171,10 +187,11 @@ export function City() {
         target={[0, 9, 0]}
       />
       <CameraRig />
-      {!off('fx') && (
-      <EffectComposer multisampling={4}>
-        <Bloom mipmapBlur intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />
+      {fx && (
+      <EffectComposer multisampling={0}>
+        <Bloom mipmapBlur resolutionScale={0.5} intensity={1.1} luminanceThreshold={0.85} luminanceSmoothing={0.2} radius={0.7} />
         <Vignette offset={0.45} darkness={0.22} />
+        {dpr < 1.2 ? <SMAA /> : <></>}
       </EffectComposer>
       )}
     </Canvas>
