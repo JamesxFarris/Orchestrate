@@ -34,4 +34,6 @@ These favour care over speed; for trivial changes, use judgment.
 - **Map:** `docs/roadmap.md` (done and next), `packages/core` (orchestrator, pipeline, gates,
   scope guard), `packages/server` (daemon), `packages/city` (3D UI), `packages/eval` (eval bench),
   `presets/` (teams, including `budget.team.yaml`), `tools/` (model build scripts, screenshots).
+- **Notes:** every change that alters behaviour updates the knowledge base in `docs/` (a subsystem
+  note and its change log, or a decision record); see `docs/README.md`.
 - **City style:** cozy and nature-toned, organic rather than symmetric; colour means status.

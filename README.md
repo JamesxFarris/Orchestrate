@@ -49,6 +49,10 @@ claude mcp add orchestrate -- node --import tsx C:/James/Orchestrate/packages/mc
 
 The MCP server talks to the daemon at `ORCH_URL` (default `http://127.0.0.1:4317`), so the daemon must be running.
 
+## Knowledge base
+
+How things work and why they're built that way lives in [docs/](docs/README.md): decision records, notes per subsystem, the performance budget and the threat model. Every change that alters behaviour updates a note there.
+
 ## The org (squad/chapter model)
 
 Buildings carry standard industry job titles. Titles repeat across squads (every squad has a Tech Lead), so the city always shows the squad alongside the title.
