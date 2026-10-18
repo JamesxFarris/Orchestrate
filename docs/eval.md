@@ -62,6 +62,7 @@ The scorecard's "since last run" line compares only Orchestrate runs, so adding 
 
 - **The current scenarios are small** (a slug function, a median bug, a two-squad tax endpoint). Solo Claude will likely solve them, so they may show cost differences but not accuracy differences. Scenarios where the harness should matter (a multi-file feature, a scope trap, a bug where tests-first pays) are the next step.
 - **The live solo path has not been run yet.** It is typechecked and shares its scoring with the tested scripted path, but its first live run is its real test.
+- **Windows file locks.** Under parallel test load, git sometimes fails with "Permission denied" writing into `.git/objects` in the temp folder (antivirus or the indexer holding a new file). Seen in 2 of 6 full test runs once the baseline tests were added, never on `main` before them. The real-git eval suites retry once. Orchestrate's own git calls during a real run could hit the same race; a retry on that error in `packages/core/src/git/git.ts` would be the product-level fix (not done).
 - Cost per run is what the SDK reports (`total_cost_usd`). On a subscription login that's an estimate of usage, not a bill.
 
 ## Change log

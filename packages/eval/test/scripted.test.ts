@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { comparison, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
+ * These tests drive real git in temp folders while other test files do the same in parallel. On
+ * Windows a new file in .git/objects can be briefly locked (antivirus, the indexer), and git then
+ * fails with "Permission denied". That's the machine, not the bench, so these suites retry once.
+ */
+const REAL_GIT = { retry: 1 };
+
+/**
  * The scripted team plays every role perfectly, so every scenario must score perfectly. If one
  * does not, either the scenario is broken (its judge, plan or solution disagree) or the harness
  * rejects correct work, which is how this bench first caught the red-phase SyntaxError rule.
  */
-describe('eval bench, scripted team (free)', () => {
+describe('eval bench, scripted team (free)', REAL_GIT, () => {
   const scenarios = loadScenarios();
 
   it('has scenarios to run', () => {
@@ -40,7 +47,7 @@ describe('eval bench, scripted team (free)', () => {
  * the reference solution must score perfectly, and one that does nothing must score as wrong, so
  * the solo path and its judging are checked before a real session is paid for.
  */
-describe('eval bench, Claude alone baseline (free)', () => {
+describe('eval bench, Claude alone baseline (free)', REAL_GIT, () => {
   const scenarios = loadScenarios();
 
   it.each(scenarios.map((s) => [s.id, s] as const))('%s: a solo session with the right answer scores perfectly', async (_id, scenario) => {
