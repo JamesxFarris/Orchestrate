@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparison, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
+import { comparison, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
  * These tests drive real git in temp folders while other test files do the same in parallel. On
@@ -116,5 +116,12 @@ describe('the comparison page', () => {
     expect(page).toContain('Live, m&lt;1&gt;');
     expect(page.match(/<figure class="chart">/g)).toHaveLength(3);
     expect(page).toContain('<td>6/6</td><td>4/6</td>');
+  });
+});
+
+describe('a like-for-like baseline', () => {
+  it('gives Claude alone the model the team writes code with', () => {
+    expect(soloModel('claude-opus-5-5')).toBe('claude-opus-5-5');
+    expect(soloModel('claude-opus-5-5', true)).toBe('claude-sonnet-5-5');
   });
 });

@@ -4,4 +4,4 @@ export { scorecard, comparison, verdict, summarize, totals, armOf, byArm, type A
 export { htmlReport } from './html.ts';
 export { scriptedSolo, sdkSolo, type SoloRunner, type SoloSession, type SoloOutcome } from './solo.ts';
 export { scriptedTeam } from './scriptedTeam.ts';
-export { evalTeam } from './team.ts';
+export { evalTeam, soloModel } from './team.ts';

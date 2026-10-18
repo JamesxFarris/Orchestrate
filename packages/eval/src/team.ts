@@ -37,6 +37,14 @@ export function evalTeam(model: string, budget = false): TeamConfigInput {
   };
 }
 
+/**
+ * The model the Claude alone baseline uses: the one the team writes code with. With --budget that's
+ * the budget implement model, so the comparison is like for like, not Opus against Sonnet.
+ */
+export function soloModel(model: string, budget = false): string {
+  return (budget && BUDGET_JOBS?.implement?.model) || model;
+}
+
 const BUDGET_JOBS: TeamConfigInput['jobs'] = {
   plan: { model: 'claude-sonnet-5-5', effort: 'high' },
   implement: { model: 'claude-sonnet-5-5', effort: 'medium' },
