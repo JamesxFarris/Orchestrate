@@ -177,3 +177,18 @@ describe('path helpers', () => {
     expect(scopesOverlap(['src/game/a.ts'], ['src/game/b.ts'])).toBe(false);
   });
 });
+
+describe('scope guard: answering', () => {
+  // Claude Code hands back a structured answer (a plan, a verdict, a review) by calling a tool named
+  // StructuredOutput. Refusing it meant no planner, Tech Circle or reviewer could ever answer: the
+  // first live eval failed with "agent returned no structured output" after 5 guard denials.
+  it('lets an agent hand in its structured answer', () => {
+    expect(allowed('StructuredOutput', { summary: 'a plan', tasks: [] })).toBe(true);
+  });
+
+  it('still refuses tools it does not know', () => {
+    const d = guard.check('SomeNewTool', {});
+    expect(d.allow).toBe(false);
+    if (!d.allow) expect(d.reason).toContain('not available to your role');
+  });
+});

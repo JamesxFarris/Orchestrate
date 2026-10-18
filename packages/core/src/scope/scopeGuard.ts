@@ -31,7 +31,8 @@ const WRITE_TOOLS: Record<string, string> = {
 const READ_TOOLS: Record<string, string> = { Read: 'file_path', NotebookRead: 'notebook_path' };
 /** Tools that list file names. They may look anywhere in the repo: names are not contents. */
 const LIST_TOOLS: Record<string, string> = { Glob: 'path', LS: 'path' };
-const HARMLESS = new Set(['TodoWrite', 'TodoRead']);
+// StructuredOutput is how Claude Code hands back a structured answer (plan, verdict, review); it has no side effects.
+const HARMLESS = new Set(['TodoWrite', 'TodoRead', 'StructuredOutput']);
 
 /** Shell control characters that could chain or redirect past the allowlist. */
 const SHELL_META = /[;&|`<>\r\n]|\$\(|\$\{/;

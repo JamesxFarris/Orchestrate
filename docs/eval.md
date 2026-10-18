@@ -72,16 +72,24 @@ Agents vary from run to run. With fewer than 3 runs per scenario per side the ve
 
 The scorecard's "since last run" line compares only Orchestrate runs, so adding the baseline doesn't skew it. Reports saved before the baseline existed have no `arm` field and are read as Orchestrate runs.
 
+## Live results so far
+
+| Date | Scenario | Setup | Orchestrate | Claude alone |
+|---|---|---|---|---|
+| 2026-10-18 | tax-endpoint | `--budget`, 1 run | 10/10, $0.48, 136s (after the guard fix) | 10/10, $0.20, 20s |
+
+The first smoke test found a harness bug rather than a result: Orchestrate scored 0/10 because the scope guard refused the `StructuredOutput` tool, so the planner could never hand in its plan. No earlier live test covered a job that answers with structured output. After the fix, both sides solve the easy scenario; Orchestrate took about 2.4x the usage and 7x the time. Orchestrate also hit 4 guard refusals; which tools they were isn't saved in the report yet.
+
 ## Known limits
 
 - **The first three scenarios are small**, so they'll mostly show cost differences. The last three are where an accuracy gap, if there is one, should appear. Six scenarios is still a small sample.
-- **The live solo path has not been run yet.** It is typechecked and shares its scoring with the tested scripted path, but its first live run is its real test.
 - **Windows file locks.** Under parallel test load, git sometimes fails with "Permission denied" writing into `.git/objects` in the temp folder (antivirus or the indexer holding a new file). Seen in 2 of 6 full test runs once the baseline tests were added, never on `main` before them. The real-git eval suites retry once. Orchestrate's own git calls during a real run could hit the same race; a retry on that error in `packages/core/src/git/git.ts` would be the product-level fix (not done).
 - Cost per run is what the SDK reports (`total_cost_usd`). On a subscription login that's an estimate of usage, not a bill.
 
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: first live smoke test (tax-endpoint); it found and led to the StructuredOutput guard fix.
 - 2026-10-18: three harder scenarios (duration-rules, preview-ellipsis, discount-checkout), each with a `flawed/` fix the judge must reject. Branch eval/harder-scenarios.
 - 2026-10-18: with `--budget`, Claude alone now uses the team's implement model, so the comparison is like for like (branch eval/solo-budget-model).
 - 2026-10-18: the Claude alone baseline (`--arms`), the comparison section and verdict in the scorecard, and the HTML comparison page. Branch eval/solo-baseline.
