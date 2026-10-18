@@ -1,4 +1,8 @@
+import { spawnSync } from 'node:child_process';
+import { cpSync, existsSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { filesIn } from '../src/scenario.ts';
 import { comparison, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
@@ -61,6 +65,23 @@ describe('eval bench, Claude alone baseline (free)', REAL_GIT, () => {
     const r = await runSolo(scenario, { runner: async () => ({ ok: false, costUsd: 0.4, turns: 3, detail: 'error_max_turns' }), model: 'scripted' });
     expect(r).toMatchObject({ arm: 'solo', completed: false, correct: false, status: 'failed', costUsd: 0.4, detail: 'error_max_turns' });
     expect(r.judge.passed).toBeLessThan(r.judge.total);
+  });
+
+  // a scenario is only useful if it tells careful work from a plausible shortcut
+  it.each(scenarios.filter((s) => existsSync(path.join(s.dir, 'flawed'))).map((s) => [s.id, s] as const))('%s: its tempting wrong fix passes the visible tests but not the judge', async (_id, scenario) => {
+    let visibleFailures = -1;
+    const r = await runSolo(scenario, {
+      model: 'scripted',
+      runner: async ({ repo }) => {
+        const flawed = path.join(scenario.dir, 'flawed');
+        for (const file of filesIn(flawed)) cpSync(path.join(flawed, file), path.join(repo, file));
+        const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap'], { cwd: repo, encoding: 'utf8' });
+        visibleFailures = Number(/^# fail (\d+)/m.exec(run.stdout)?.[1] ?? -1);
+        return { ok: true, costUsd: 0, turns: 0 };
+      },
+    });
+    expect(visibleFailures).toBe(0);
+    expect(r.correct).toBe(false);
   });
 
   it('asks the solo session for the request plus the project description, nothing more', async () => {

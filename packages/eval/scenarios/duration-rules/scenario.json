@@ -1,0 +1,27 @@
+{
+  "id": "duration-rules",
+  "title": "A bug whose full fix is in the rules, not the example",
+  "skill": "tests first: covering every stated rule, not just the reported case",
+  "request": "Bug report: parseDuration() in src/core/duration.js returns 3600 for '1h30m'; it should be 5400 seconds. The intended rules: a duration is hours, minutes and seconds (h, m, s) in that order, each unit at most once, with optional spaces between parts ('1h 30m' is 5400), and units in either case ('1H30M' is 5400). A bare whole number means seconds ('45' is 45). Anything else must throw an Error: empty text, an unknown unit ('1x'), a unit without a number ('h'), units out of order ('30m1h'), a repeated unit ('1h2h'), decimals ('1.5h') and negatives ('-5m'). Please fix it.",
+  "plan": {
+    "summary": "Rewrite parseDuration to follow the stated rules and reject everything else.",
+    "risks": [],
+    "tasks": [
+      {
+        "id": "duration-fix",
+        "title": "parseDuration follows the stated rules",
+        "squad": "core",
+        "kind": "code",
+        "objective": "Make parseDuration in src/core/duration.js accept h/m/s parts in order (each once, optional spaces, either case) and bare whole numbers as seconds, and throw on anything else.",
+        "acceptanceCriteria": ["'1h30m' is 5400", "'2h5m10s' is 7510", "'1h 30m' and '1H30M' are 5400", "'45' is 45", "'', '1x', 'h', '30m1h', '1h2h', '1.5h' and '-5m' throw"],
+        "nonGoals": ["formatting durations"],
+        "writeScope": ["src/core/duration.js"],
+        "readScope": [],
+        "testFiles": ["test/core/duration-rules.test.js"],
+        "dependsOn": [],
+        "testPlan": "one test per stated rule, including every rejected input"
+      }
+    ]
+  },
+  "reference": { "test/core/duration-rules.test.js": "duration-rules.test.js" }
+}

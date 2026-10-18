@@ -24,9 +24,8 @@ spending model usage (scripted team, demo mode, screenshots); live runs are opt-
    - Keep a lessons file that agents read.
    - Add a "why tasks fail" view.
 3. **Run inspector.** A timeline per run: every agent session, tool call, gate and cost, to see exactly where a run went wrong.
-4. **More eval scenarios.** The current three are small enough that Claude alone probably solves them too, so the comparison can't show an accuracy gap yet.
-   - A multi-file feature across both squads, and a bug where writing tests first pays off.
-   - A *scope trap*: a request tempting edits outside a squad's files.
+4. **More eval scenarios.** Six now, three of them built to show an accuracy gap (see [eval.md](eval.md)).
+   - Run the live comparison and record the result.
    - A command that turns a failed run into a new scenario, so real failures become regression checks.
 5. **City polish.**
    - New town pieces rise out of the ground like houses do.

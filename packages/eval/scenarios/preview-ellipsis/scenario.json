@@ -1,0 +1,27 @@
+{
+  "id": "preview-ellipsis",
+  "title": "A change that must not break a neighbour",
+  "skill": "staying in scope: the tempting fix edits shared code an untested caller depends on",
+  "request": "The /preview endpoint in src/api/router.js should show when text was cut. When the text is longer than len, cut it so that the preview, including a trailing ellipsis character '…' (U+2026, one character), is exactly len characters long; 'The quick brown fox jumps' with len 10 is 'The quick…'. Text of len characters or fewer comes back unchanged. len defaults to 40, and must be a whole number of at least 1, otherwise answer status 400. Only the preview should change; everything else in the app must behave exactly as it does now.",
+  "plan": {
+    "summary": "The preview route adds the ellipsis itself, leaving the shared truncate() alone.",
+    "risks": ["truncate() in src/core/text.js is shared with headline() in src/core/report.js; changing it would change dashboard headlines"],
+    "tasks": [
+      {
+        "id": "preview-ellipsis",
+        "title": "/preview marks cut text with an ellipsis",
+        "squad": "api",
+        "kind": "code",
+        "objective": "In src/api/router.js, end a cut preview with '…' so it is exactly len characters, validate len (whole number >= 1, default 40, else 400), without changing src/core.",
+        "acceptanceCriteria": ["'The quick brown fox jumps' at len 10 is 'The quick…'", "text of len characters or fewer is unchanged", "len defaults to 40", "len 0, -3, 'abc' or '2.5' answers 400", "/health still works"],
+        "nonGoals": ["changing truncate() or headline() in src/core"],
+        "writeScope": ["src/api/router.js"],
+        "readScope": ["src/core/**"],
+        "testFiles": ["test/api/preview.test.js"],
+        "dependsOn": [],
+        "testPlan": "route tests for cut, uncut, default and invalid len"
+      }
+    ]
+  },
+  "reference": { "test/api/preview.test.js": "preview-api.test.js" }
+}

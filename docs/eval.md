@@ -14,6 +14,20 @@ Each scenario is a folder under `packages/eval/scenarios/<id>/`:
 | `repo/` | the project as it starts (committed on `main` before a run) |
 | `hidden/` | **judge tests** neither side ever sees: the ground truth |
 | `solution/` | the reference answer, used by the scripted (free) runs |
+| `flawed/` | optional: a tempting wrong fix that passes the repo's visible tests; a test checks the judge rejects it |
+
+### The scenarios
+
+| Scenario | What it tests | Where a lone agent tends to slip |
+|---|---|---|
+| `slugify` | a small feature | (easy; a sanity check) |
+| `median-bug` | a bug fix from a user report | (easy) |
+| `tax-endpoint` | a feature across two squads, in order | (fairly easy) |
+| `duration-rules` | a bug report that lists many rules | fixing the reported example and missing the rest: the flawed fix scores 6/12 |
+| `preview-ellipsis` | a change that must not affect anything else | editing the shared `truncate()`, which silently changes untested `headline()`: 6/8 |
+| `discount-checkout` | a multi-file feature with exact rules | an exclusive expiry date or rounding down: 13/16 |
+
+Every rule a judge test checks is stated in the request, so neither side is marked down for something it wasn't told. Each of the last three has a `flawed/` fix that passes the repo's own tests but not the judge, so the scenario can tell careful work from a plausible shortcut.
 
 After a run, the judge tests are copied into a checkout of the code it produced and run with `node --test`. **Correct** means every judge test passed.
 
@@ -42,7 +56,7 @@ The solo session runs with `acceptEdits`; file tools are confined to the scenari
 | `npm run eval -- --arms orchestrate,solo` | free | also the scripted solo; must score 100%, checks the baseline path and the report |
 | `npm run eval -- --live --budget --arms orchestrate,solo` | **usage** | the real comparison, cheapest models |
 | add `--repeat 3` | 3x usage | needed before trusting a gap |
-| add `--only slugify` | less | one scenario |
+| add `--only slugify` | less | one scenario; repeat the flag for several (`--only a --only b`) |
 
 **Live runs spend Claude usage. Ask James first, with a rough cost** (see CLAUDE.md). The `main.ts` header estimates a few dollars per scenario for the team; the solo arm adds up to $3 per scenario.
 
@@ -60,7 +74,7 @@ The scorecard's "since last run" line compares only Orchestrate runs, so adding 
 
 ## Known limits
 
-- **The current scenarios are small** (a slug function, a median bug, a two-squad tax endpoint). Solo Claude will likely solve them, so they may show cost differences but not accuracy differences. Scenarios where the harness should matter (a multi-file feature, a scope trap, a bug where tests-first pays) are the next step.
+- **The first three scenarios are small**, so they'll mostly show cost differences. The last three are where an accuracy gap, if there is one, should appear. Six scenarios is still a small sample.
 - **The live solo path has not been run yet.** It is typechecked and shares its scoring with the tested scripted path, but its first live run is its real test.
 - **Windows file locks.** Under parallel test load, git sometimes fails with "Permission denied" writing into `.git/objects` in the temp folder (antivirus or the indexer holding a new file). Seen in 2 of 6 full test runs once the baseline tests were added, never on `main` before them. The real-git eval suites retry once. Orchestrate's own git calls during a real run could hit the same race; a retry on that error in `packages/core/src/git/git.ts` would be the product-level fix (not done).
 - Cost per run is what the SDK reports (`total_cost_usd`). On a subscription login that's an estimate of usage, not a bill.
@@ -68,5 +82,6 @@ The scorecard's "since last run" line compares only Orchestrate runs, so adding 
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: three harder scenarios (duration-rules, preview-ellipsis, discount-checkout), each with a `flawed/` fix the judge must reject. Branch eval/harder-scenarios.
 - 2026-10-18: with `--budget`, Claude alone now uses the team's implement model, so the comparison is like for like (branch eval/solo-budget-model).
 - 2026-10-18: the Claude alone baseline (`--arms`), the comparison section and verdict in the scorecard, and the HTML comparison page. Branch eval/solo-baseline.
