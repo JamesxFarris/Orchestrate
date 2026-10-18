@@ -9,6 +9,7 @@ import { runScenario, runSolo, type Arm, type ScenarioResult } from './run.ts';
 import { loadScenarios } from './scenario.ts';
 import { scriptedTeam } from './scriptedTeam.ts';
 import { scriptedSolo, sdkSolo } from './solo.ts';
+import { soloModel } from './team.ts';
 
 /**
  * npm run eval                         scripted team, free: checks the bench itself
@@ -59,7 +60,7 @@ for (const scenario of scenarios) {
     for (const arm of arms) {
       const r =
         arm === 'solo'
-          ? await runSolo(scenario, { runner: values.live ? sdkSolo : scriptedSolo(), model: values.model!, keep: values.keep })
+          ? await runSolo(scenario, { runner: values.live ? sdkSolo : scriptedSolo(), model: soloModel(values.model!, values.budget), keep: values.keep })
           : await runScenario(scenario, { runner: values.live ? new SdkRunner() : scriptedTeam(scenario), model: values.model!, budget: values.budget, keep: values.keep });
       results.push(r);
       console.log(`[eval] ${scenario.id}${repeat > 1 ? ` #${i + 1}` : ''} ${arm}: ${r.correct ? 'correct' : 'NOT correct'} (${r.judge.passed}/${r.judge.total}), ${r.status}, $${r.costUsd.toFixed(2)}, ${r.seconds}s`);

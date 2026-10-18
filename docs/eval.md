@@ -26,7 +26,7 @@ After a run, the judge tests are copied into a checkout of the code it produced 
 
 Kept the same on both sides, so the gap is the harness and nothing else:
 
-- the same model, the same request, the same starting repo;
+- the same model (the one the team writes code with: with `--budget` that's the budget implement model, Sonnet, not the default Opus), the same request, the same starting repo;
 - the same project description (it says tests use `node --test`); the solo prompt is the request plus that description, nothing more, and no hint to write tests first;
 - no user or project settings, plugins, or CLAUDE.md (`settingSources: []`);
 - web tools off;
@@ -68,4 +68,5 @@ The scorecard's "since last run" line compares only Orchestrate runs, so adding 
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: with `--budget`, Claude alone now uses the team's implement model, so the comparison is like for like (branch eval/solo-budget-model).
 - 2026-10-18: the Claude alone baseline (`--arms`), the comparison section and verdict in the scorecard, and the HTML comparison page. Branch eval/solo-baseline.
