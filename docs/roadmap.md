@@ -11,6 +11,7 @@ spending model usage (scripted team, demo mode, screenshots); live runs are opt-
   - Agents must finish with `submit_work` (Stop hook).
   - Context: a project guide (AGENTS.md / CLAUDE.md), a brief per task, notes on retries, the ADR list and memory of recent runs for the planner.
 - **Evals** (`packages/eval`, `npm run eval`): sample projects with hidden judge tests, and a scorecard comparing runs. The scripted run is free.
+- **Claude alone baseline** (`npm run eval -- --arms orchestrate,solo`): the same scenarios done by one plain Claude Code session, judged the same way, with a side-by-side scorecard and an HTML comparison page. See [eval.md](eval.md).
 - **Budget**: a model per job (`jobs:`), short prompts for reviewers, a usage cap per run, a plain run report, and `presets/budget.team.yaml`.
 - **City**: Kenney houses in an organic old village; a modern town around it, with a ring road, shops, towers and cars; the owner's tree and street lamps; a bigger island.
 
@@ -23,7 +24,8 @@ spending model usage (scripted team, demo mode, screenshots); live runs are opt-
    - Keep a lessons file that agents read.
    - Add a "why tasks fail" view.
 3. **Run inspector.** A timeline per run: every agent session, tool call, gate and cost, to see exactly where a run went wrong.
-4. **More eval scenarios.**
+4. **More eval scenarios.** The current three are small enough that Claude alone probably solves them too, so the comparison can't show an accuracy gap yet.
+   - A multi-file feature across both squads, and a bug where writing tests first pays off.
    - A *scope trap*: a request tempting edits outside a squad's files.
    - A command that turns a failed run into a new scenario, so real failures become regression checks.
 5. **City polish.**
