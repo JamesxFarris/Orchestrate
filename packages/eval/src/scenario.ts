@@ -8,6 +8,7 @@ import type { Plan } from '@orchestrate/shared';
  *   repo/          the project as it starts (committed on main before the run)
  *   hidden/        judge tests the agents never see: the ground truth for "is it right?"
  *   solution/      the reference answer, used by the scripted team to check the bench itself
+ *   flawed/        optional: a tempting wrong fix that passes the visible tests; the judge must reject it
  */
 export interface Scenario {
   id: string;

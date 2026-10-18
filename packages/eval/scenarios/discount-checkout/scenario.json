@@ -1,0 +1,41 @@
+{
+  "id": "discount-checkout",
+  "title": "A feature with many exact rules across two squads",
+  "skill": "a multi-file feature whose edge cases are all in the spec: rounding, inclusive dates, limits, error messages",
+  "request": "Add discount codes at checkout. In core, add applyDiscount(cents, code, today) to src/core/money.js, using the codes defined in src/core/codes.js. It returns { total, discount } in integer cents, or throws an Error whose message is exactly 'unknown code', 'expired' or 'minimum not met'. Rules: codes match in any case ('save10' works); percent discounts round half up to whole cents (10% off 1005 is a discount of 101, total 904); a fixed discount never takes the total below 0 (the discount is then the whole order); a code is valid through its expires date inclusive, where today is a 'YYYY-MM-DD' string (SAVE10 works on '2026-12-31' and is expired on '2027-01-01'); a code with minCents applies only when cents is at least minCents. In the API, src/api/router.js should answer { path: '/checkout', query: { cents, code, today } } (query values are strings) with { status: 200, body: { total, discount } }; when the code is refused, with status 400 and body { error } holding that exact message; and with status 400 and body { error: 'bad request' } when cents is missing, not a whole number, or negative, or today is missing. Keep formatCents and the existing routes working.",
+  "plan": {
+    "summary": "Core adds applyDiscount over the code table; the API exposes it on /checkout.",
+    "risks": [],
+    "tasks": [
+      {
+        "id": "discount-core",
+        "title": "applyDiscount in core money",
+        "squad": "core",
+        "kind": "code",
+        "objective": "Export applyDiscount(cents, code, today) from src/core/money.js following every stated rule, using CODES from src/core/codes.js.",
+        "acceptanceCriteria": ["SAVE10 on 2000 is { total: 1800, discount: 200 }", "SAVE10 on 1005 is { total: 904, discount: 101 }", "codes match in any case", "valid on the expiry day, 'expired' the day after", "FIVEOFF below 2000 throws 'minimum not met'", "BIGDEAL on 3000 is { total: 0, discount: 3000 }", "an unknown code throws 'unknown code'", "formatCents unchanged"],
+        "nonGoals": ["changing the code table"],
+        "writeScope": ["src/core/money.js"],
+        "readScope": ["src/core/codes.js"],
+        "testFiles": ["test/core/discount.test.js"],
+        "dependsOn": [],
+        "testPlan": "unit tests per rule: rounding, case, expiry boundary, minimum, floor at zero, unknown code"
+      },
+      {
+        "id": "discount-api",
+        "title": "/checkout route",
+        "squad": "api",
+        "kind": "code",
+        "objective": "Answer /checkout in src/api/router.js using applyDiscount, mapping refused codes and bad input to 400 as stated.",
+        "acceptanceCriteria": ["/checkout with cents=2000, code=SAVE10 answers { total: 1800, discount: 200 }", "a refused code answers 400 with its message", "missing, non-whole or negative cents, or missing today, answers 400 'bad request'", "/health still works"],
+        "nonGoals": ["changing core"],
+        "writeScope": ["src/api/router.js"],
+        "readScope": ["src/core/**"],
+        "testFiles": ["test/api/checkout.test.js"],
+        "dependsOn": ["discount-core"],
+        "testPlan": "route tests for a good order, each refused code, and each kind of bad input"
+      }
+    ]
+  },
+  "reference": { "test/core/discount.test.js": "discount-core.test.js", "test/api/checkout.test.js": "discount-api.test.js" }
+}
