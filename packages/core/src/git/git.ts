@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { isSafeRef } from '@orchestrate/shared';
 
 const execFileP = promisify(execFile);
 
@@ -30,7 +31,14 @@ export async function head(cwd: string): Promise<string> {
   return (await git(cwd, ['rev-parse', 'HEAD'])).trim();
 }
 
+/** Refuses a ref git would read as an option or a path; see SAFE_REF. */
+export function assertSafeRef(ref: string): string {
+  if (!isSafeRef(ref)) throw new GitError(['rev-parse', ref], `not a valid ref: ${JSON.stringify(ref.slice(0, 80))}`);
+  return ref;
+}
+
 export async function revParse(cwd: string, ref: string): Promise<string> {
+  assertSafeRef(ref);
   return (await git(cwd, ['rev-parse', '--verify', `${ref}^{commit}`])).trim();
 }
 

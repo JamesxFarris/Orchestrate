@@ -1,3 +1,4 @@
+import { isSafeRef } from '@orchestrate/shared';
 import * as g from '../git/git.ts';
 
 /**
@@ -9,7 +10,7 @@ import * as g from '../git/git.ts';
 /** A file's contents at `ref`, or undefined when it does not exist there. */
 export async function gitShow(repoRoot: string, ref: string, file: string): Promise<string | undefined> {
   try {
-    return await g.git(repoRoot, ['show', `${ref}:${file}`]);
+    return await g.git(repoRoot, ['show', `${g.assertSafeRef(ref)}:${file}`]);
   } catch {
     return undefined;
   }
@@ -17,7 +18,8 @@ export async function gitShow(repoRoot: string, ref: string, file: string): Prom
 
 /** File names directly inside `dir` at `ref` (not recursive); empty when the directory does not exist. */
 export async function lsTree(repoRoot: string, ref: string, dir: string): Promise<string[]> {
-  const out = await g.git(repoRoot, ['ls-tree', '--name-only', ref, `${dir.replace(/\/+$/, '')}/`]).catch(() => '');
+  if (!isSafeRef(ref)) return [];
+  const out = await g.git(repoRoot, ['ls-tree', '--name-only', ref, '--', `${dir.replace(/\/+$/, '')}/`]).catch(() => '');
   return out
     .split('\n')
     .map((s) => s.trim())

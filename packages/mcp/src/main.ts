@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { ProgressSnapshot, RunState } from '@orchestrate/shared';
+import { SAFE_REF, type ProgressSnapshot, type RunState } from '@orchestrate/shared';
 import { z } from 'zod';
 
 /** Thin MCP front door: Claude Code talks to the Master through the local Orchestrate daemon. */
@@ -85,7 +85,7 @@ server.registerTool(
     inputSchema: {
       prompt: z.string().min(3).max(20_000).describe('What you want built or fixed, with any constraints.'),
       autoApprove: z.boolean().optional().describe('Skip the human plan-approval gate when the Tech Circle approves the plan. Default false.'),
-      baseRef: z.string().max(200).optional().describe('Branch/commit to build on. Defaults to the project default branch.'),
+      baseRef: z.string().regex(SAFE_REF, 'baseRef must be a branch, tag or commit').optional().describe('Branch/commit to build on. Defaults to the project default branch.'),
     },
   },
   async (args) => {
