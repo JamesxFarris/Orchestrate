@@ -1,5 +1,7 @@
 export { loadScenarios, type Scenario } from './scenario.ts';
-export { runScenario, judge, type ScenarioResult, type RunOptions } from './run.ts';
-export { scorecard, totals, type EvalReport, type Totals } from './report.ts';
+export { runScenario, runSolo, judge, judgeRef, type Arm, type ScenarioResult, type RunOptions, type SoloOptions } from './run.ts';
+export { scorecard, comparison, verdict, summarize, totals, armOf, byArm, type ArmSummary, type EvalReport, type Totals } from './report.ts';
+export { htmlReport } from './html.ts';
+export { scriptedSolo, sdkSolo, type SoloRunner, type SoloSession, type SoloOutcome } from './solo.ts';
 export { scriptedTeam } from './scriptedTeam.ts';
 export { evalTeam } from './team.ts';

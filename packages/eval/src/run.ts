@@ -5,11 +5,17 @@ import path from 'node:path';
 import { Org, Orchestrator, Store, type AgentRunner } from '@orchestrate/core';
 import type { OrchestrateEvent, RunState } from '@orchestrate/shared';
 import type { Scenario } from './scenario.ts';
+import type { SoloRunner } from './solo.ts';
 import { evalTeam } from './team.ts';
+
+/** Who did the work: the Orchestrate team, or one plain Claude Code session (the baseline). */
+export type Arm = 'orchestrate' | 'solo';
 
 /** One scenario run, scored. Field names are what the scorecard and comparisons use. */
 export interface ScenarioResult {
   scenario: string;
+  /** Absent in reports saved before the solo baseline existed: those are all 'orchestrate'. */
+  arm?: Arm;
   /** The run reached "completed" (some work merged). */
   completed: boolean;
   status: RunState['status'];
@@ -47,9 +53,13 @@ function startRepo(scenario: Scenario, root: string): string {
 
 /** Run the hidden judge tests against the code a run produced (its integration branch). */
 export function judge(scenario: Scenario, repo: string, run: RunState): { passed: number; total: number } {
+  return judgeRef(scenario, repo, run.integrationHead ?? run.integrationBranch);
+}
+
+/** Run the hidden judge tests against the code at `ref` in `repo`. */
+export function judgeRef(scenario: Scenario, repo: string, ref: string | undefined): { passed: number; total: number } {
   const hidden = readdirSync(path.join(scenario.dir, 'hidden'));
   const total = countTests(scenario);
-  const ref = run.integrationHead ?? run.integrationBranch;
   if (!ref) return { passed: 0, total };
   const dir = path.join(path.dirname(repo), 'judge');
   try {
@@ -117,6 +127,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
   const tasks = run.tasks;
   return {
     scenario: scenario.id,
+    arm: 'orchestrate',
     completed: run.status === 'completed',
     status: run.status,
     judge: verdict,
@@ -135,5 +146,51 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
     costUsd: Math.round(run.costUsd * 100) / 100,
     seconds,
     ...(run.status === 'completed' ? {} : { detail: run.detail }),
+  };
+}
+
+export interface SoloOptions {
+  runner: SoloRunner;
+  model: string;
+  keep?: boolean;
+}
+
+/**
+ * The baseline: one plain Claude Code session does the same request in a fresh copy of the same
+ * repo, its changes are committed as they stand, and the same hidden judge tests score it. The
+ * prompt is the request plus the project description the team is given, nothing more.
+ */
+export async function runSolo(scenario: Scenario, opts: SoloOptions): Promise<ScenarioResult> {
+  const root = mkdtempSync(path.join(os.tmpdir(), `orch-eval-solo-${scenario.id}-`));
+  const repo = startRepo(scenario, root);
+  const prompt = `${scenario.request}
+
+${evalTeam(opts.model).project.description}`;
+
+  const started = Date.now();
+  const outcome = await opts.runner({ scenario, repo, model: opts.model, prompt });
+  const seconds = Math.round((Date.now() - started) / 1000);
+
+  git(repo, 'add', '-A');
+  if (git(repo, 'status', '--porcelain')) git(repo, 'commit', '-q', '-m', 'solo session');
+  const verdict = judgeRef(scenario, repo, 'HEAD');
+  if (!opts.keep) rmSync(root, { recursive: true, force: true });
+
+  return {
+    scenario: scenario.id,
+    arm: 'solo',
+    completed: outcome.ok,
+    status: outcome.ok ? 'completed' : 'failed',
+    judge: verdict,
+    correct: verdict.total > 0 && verdict.passed === verdict.total,
+    // a solo session has no plan: one "task", the whole request
+    tasks: { total: 1, merged: outcome.ok ? 1 : 0, firstTry: outcome.ok ? 1 : 0, escalated: 0, failed: outcome.ok ? 0 : 1 },
+    retries: 0,
+    gateFailures: {},
+    denials: 0,
+    neededHuman: false,
+    costUsd: Math.round(outcome.costUsd * 100) / 100,
+    seconds,
+    ...(outcome.ok ? {} : { detail: outcome.detail }),
   };
 }

@@ -43,6 +43,7 @@ What this makes easy, what it makes hard, and what to watch.
 ## Index
 
 - [Roadmap](roadmap.md)
+- [Eval bench](eval.md): scoring the harness, and comparing it with Claude alone
 - Decisions
   - [0001. Orchestrate runs locally, as a plugin, never hosted](decisions/0001-local-only.md)
 - City
