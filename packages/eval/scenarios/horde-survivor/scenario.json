@@ -1,0 +1,111 @@
+{
+  "id": "horde-survivor",
+  "title": "A small game, eight systems built against one spec",
+  "skill": "a long, multi-system build: many features across two squads that must fit together, where later work can break earlier work",
+  "request": "Implement the game in docs/spec.md: waves, chase, the weapon and bullets, deaths and gems, contact damage, levelling and level-up choices, the run summary, and save/load (which needs the random generator in src/core/rng.js to report and resume its state without changing its numbers). Follow the spec exactly. src/sim/world.js already calls every system in the right order; keep that order and the world's shape, and implement each system in its own module.",
+  "team": {
+    "squads": [
+      { "id": "engine", "name": "Core Engine", "mission": "Fixed-step loop, RNG, math.", "owns": ["src/core/**"], "testDirs": ["test/core/**"], "color": "#1985a1" },
+      { "id": "gameplay", "name": "Gameplay", "mission": "Simulation rules (player, weapons, bullets, enemies, waves, combat, pickups, progression) and the data tables that tune them.", "owns": ["src/sim/**", "src/data/**"], "testDirs": ["test/sim/**"], "color": "#e4572e" }
+    ],
+    "maxRunUsd": 8
+  },
+  "plan": {
+    "summary": "Engine makes the RNG saveable; Gameplay implements each system in its own module against the spec, then save/load on top of the RNG state.",
+    "risks": ["the systems run in a fixed order each tick; implementations must not reorder them or change the world's shape"],
+    "tasks": [
+      {
+        "id": "rng-state",
+        "title": "Saveable RNG",
+        "squad": "engine",
+        "kind": "code",
+        "objective": "Add rng.state() and createRng(seed, state) to src/core/rng.js so a generator can be saved and resumed, without changing the numbers it produces.",
+        "acceptanceCriteria": ["createRng(7)'s sequence is unchanged", "createRng(seed, a.state()) continues a's sequence", "state survives a JSON round trip"],
+        "nonGoals": ["changing next, int or shuffle"],
+        "writeScope": ["src/core/rng.js"],
+        "readScope": [],
+        "testFiles": ["test/core/rng-state.test.js"],
+        "dependsOn": [],
+        "testPlan": "sequence regression, resume from state, JSON round trip"
+      },
+      {
+        "id": "waves",
+        "title": "Enemy waves",
+        "squad": "gameplay",
+        "kind": "code",
+        "objective": "Implement spawnWaves in src/sim/spawn.js per docs/spec.md step 1.",
+        "acceptanceCriteria": ["a wave every 60 ticks", "3 + floor(tick / 300) enemies", "40 from the player at angles from world.rng.next() in turn", "ids count up from 1 across waves"],
+        "nonGoals": ["moving enemies"],
+        "writeScope": ["src/sim/spawn.js"],
+        "readScope": ["src/**", "docs/**"],
+        "testFiles": ["test/sim/waves.test.js"],
+        "dependsOn": [],
+        "testPlan": "wave timing, growth, placement against a reference rng, ids"
+      },
+      {
+        "id": "enemies",
+        "title": "Chase, deaths and contact damage",
+        "squad": "gameplay",
+        "kind": "code",
+        "objective": "Implement moveEnemies, removeDead and contactDamage in src/sim/enemies.js per docs/spec.md steps 2, 5 and 6.",
+        "acceptanceCriteria": ["enemies step toward the player at speed 1, landing on it when closer", "dead enemies are removed, counted and drop gems", "contact costs 10 hp once per tick then 30 ticks of invulnerability", "hp 0 ends the run"],
+        "nonGoals": ["spawning", "the weapon"],
+        "writeScope": ["src/sim/enemies.js"],
+        "readScope": ["src/**", "docs/**"],
+        "testFiles": ["test/sim/enemies.test.js"],
+        "dependsOn": [],
+        "testPlan": "movement, death and gems, contact and invulnerability, game over"
+      },
+      {
+        "id": "weapon",
+        "title": "Auto-weapon and bullets",
+        "squad": "gameplay",
+        "kind": "code",
+        "objective": "Implement fireWeapon and moveBullets in src/sim/weapon.js per docs/spec.md steps 3 and 4, using the world's weapon stats.",
+        "acceptanceCriteria": ["fires at the nearest enemy in range (lowest id on a tie)", "cooldown counts down", "bullets move, hit the first enemy in id order, expire on ttl", "upgraded stats are used"],
+        "nonGoals": ["removing dead enemies"],
+        "writeScope": ["src/sim/weapon.js"],
+        "readScope": ["src/**", "docs/**"],
+        "testFiles": ["test/sim/weapon.test.js"],
+        "dependsOn": [],
+        "testPlan": "firing, cooldown, targeting, hits, expiry, upgraded stats"
+      },
+      {
+        "id": "progression",
+        "title": "Gems, levels and upgrade choices",
+        "squad": "gameplay",
+        "kind": "code",
+        "objective": "Implement collectGems, offerLevelUp and choose in src/sim/progression.js per docs/spec.md steps 7 and 8 and the upgrade table.",
+        "acceptanceCriteria": ["gems in pickup radius add xp", "thresholds raise level and queue choices", "a pending level-up pauses and offers 3 upgrades from world.rng", "each upgrade's effect", "invalid choices throw", "multiple pending level-ups chain"],
+        "nonGoals": ["saving"],
+        "writeScope": ["src/sim/progression.js"],
+        "readScope": ["src/**", "docs/**"],
+        "testFiles": ["test/sim/progression.test.js"],
+        "dependsOn": [],
+        "testPlan": "collection, levelling, offers, every upgrade, errors, chained level-ups"
+      },
+      {
+        "id": "save",
+        "title": "Summary, save and load",
+        "squad": "gameplay",
+        "kind": "code",
+        "objective": "Implement summary, save and load in src/sim/save.js so a loaded world continues exactly as the saved one would.",
+        "acceptanceCriteria": ["summary reports tick, kills, level, xp, hp, over", "save returns JSON", "load restores the world and its rng position"],
+        "nonGoals": ["changing the rng's numbers"],
+        "writeScope": ["src/sim/save.js"],
+        "readScope": ["src/**", "docs/**"],
+        "testFiles": ["test/sim/save.test.js"],
+        "dependsOn": ["rng-state"],
+        "testPlan": "summary fields, round trip, rng continuity"
+      }
+    ]
+  },
+  "reference": {
+    "test/core/rng-state.test.js": "rng-state.test.js",
+    "test/sim/waves.test.js": "waves.test.js",
+    "test/sim/enemies.test.js": "enemies.test.js",
+    "test/sim/weapon.test.js": "weapon.test.js",
+    "test/sim/progression.test.js": "progression.test.js",
+    "test/sim/save.test.js": "save.test.js"
+  }
+}
