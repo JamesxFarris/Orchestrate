@@ -3,7 +3,7 @@ import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { filesIn } from '../src/scenario.ts';
-import { comparison, contextUse, htmlReport, loadScenarios, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
+import { comparison, contextUse, htmlReport, loadScenarios, refusedCalls, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
  * These tests drive real git in temp folders while other test files do the same in parallel. On
@@ -185,6 +185,9 @@ describe('measures beyond correctness (free)', REAL_GIT, () => {
     const both = { run: async (inv: Parameters<typeof runner.run>[0]) => (await runner.run(inv), scripted.run(inv)) };
     const r = await runScenario(preview, { runner: both, model: 'scripted' });
     expect(r.deniedTools!.Write).toBeGreaterThan(0);
+    // the call itself is kept, without the guard's reason, so a report can say what was refused
+    expect(r.deniedCalls).toContain('Write src/core/text.js');
+    expect(refusedCalls([r])[0]).toEqual(['Write src/core/text.js', r.deniedTools!.Write]);
   });
 
   it('adds up context over sessions, keeping the largest single prompt', () => {

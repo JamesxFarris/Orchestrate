@@ -42,7 +42,7 @@ Correctness alone would miss most of what Orchestrate claims. Its idea is about 
 | Scope | code files changed that no task needed (the reference plan's write scopes are the yardstick), and lines changed | did it stay on task, or wander and over-edit |
 | Tests left behind | new `test(` / `it(` lines under `test/` | is the next change safer |
 | Context | the largest prompt any single model request carried (`peak`), and every token over all sessions | does splitting the work keep each agent's context small, and what does the whole job cost in tokens |
-| Refused tool calls, by tool | the scope guard's refusals (for Claude alone, attempts outside the project folder) | is the guard wasting turns, and on what |
+| Refused tool calls, by tool | the scope guard's refusals (for Claude alone, attempts outside the project folder); the first 50 calls themselves are kept, and the scorecard lists the most common | is the guard wasting turns, and on what |
 | Usage and time | the SDK's reported cost, wall-clock time | what it costs |
 
 All of it is read from the run itself (the SDK's usage numbers and the result's git diff), so measuring costs no extra usage. The scorecard's "Beyond correctness" table and the HTML page show them side by side.
@@ -126,6 +126,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: refused calls are recorded ("Bash npm test"), and the scorecard lists the most common. Branch eval/refused-calls.
 - 2026-10-18: first real comparison on the three harder scenarios, 3 runs each (results above). Branch docs/first-comparison.
 - 2026-10-18: measures beyond correctness (regressions, scope, lines changed, tests left behind, peak context, tokens, refusals by tool). The core runner now records each session's tokens and peak context. Branch eval/richer-measures.
 - 2026-10-18: first live smoke test (tax-endpoint); it found and led to the StructuredOutput guard fix.

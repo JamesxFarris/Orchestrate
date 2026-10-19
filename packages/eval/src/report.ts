@@ -84,9 +84,18 @@ export function scorecard(report: EvalReport, previous?: EvalReport): string {
       `**Since ${previous.commit} (${previous.at.slice(0, 16).replace('T', ' ')}):** correct ${delta(t.correctRate, p.correctRate)}, judge tests ${delta(t.judgeRate, p.judgeRate)}, first-try ${delta(t.firstTryRate, p.firstTryRate)}, escalations ${delta(t.escalations, p.escalations, false, false)}, retries ${delta(t.retries, p.retries, false, false)}, cost ${delta(t.costUsd, p.costUsd, false, false)}.`,
     );
   }
+  const refused = refusedCalls(team);
+  if (refused.length) lines.push('', '**Most refused calls (Orchestrate):** ' + refused.map(([call, n]) => `\`${call}\` ×${n}`).join(', '));
   const solo = byArm(report.results, 'solo');
   if (solo.length) lines.push('', comparison(team, solo));
   return lines.join('\n');
+}
+
+/** The refused calls that came up most, with how often: what the guard keeps saying no to. */
+export function refusedCalls(results: ScenarioResult[], top = 10): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const r of results) for (const call of r.deniedCalls ?? []) counts.set(call, (counts.get(call) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, top);
 }
 
 /** One arm's results, summed over runs. */

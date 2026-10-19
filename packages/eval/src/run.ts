@@ -43,7 +43,12 @@ export interface ScenarioResult {
   context?: ContextUse;
   /** Tool calls the guard (or, for the solo arm, the folder check) refused, by tool name. */
   deniedTools?: Record<string, number>;
+  /** The refused calls themselves ("Bash npm test", "Read src/x.js"), the first MAX_DENIED_CALLS of them. */
+  deniedCalls?: string[];
 }
+
+/** Enough refused calls to see the pattern without bloating a report. */
+export const MAX_DENIED_CALLS = 50;
 
 /**
  * How much context the work took. `peak` is the largest prompt any single model request carried:
@@ -70,16 +75,23 @@ export function contextUse(sessions: { tokens?: TokenUsage; peakContext?: number
 /** The tool a refusal names: refusals are logged as "<Tool> <target> — <reason>". */
 const toolOf = (text: string) => text.split(/\s/, 1)[0] || 'unknown';
 
+/** The call a refusal names, without the guard's reason. */
+const callOf = (text: string) => text.split(' — ', 1)[0]!;
+
 /** Wraps the team's runner to keep every session's result and every refused tool call. */
 function recorder(inner: AgentRunner) {
   const sessions: AgentResult[] = [];
   const deniedTools: Record<string, number> = {};
+  const deniedCalls: string[] = [];
   const runner: AgentRunner = {
     run: async (inv) => {
       const r = await inner.run({
         ...inv,
         onSignal: (sig) => {
-          if (sig.kind === 'log' && sig.level === 'denied') deniedTools[toolOf(sig.text)] = (deniedTools[toolOf(sig.text)] ?? 0) + 1;
+          if (sig.kind === 'log' && sig.level === 'denied') {
+            deniedTools[toolOf(sig.text)] = (deniedTools[toolOf(sig.text)] ?? 0) + 1;
+            if (deniedCalls.length < MAX_DENIED_CALLS) deniedCalls.push(callOf(sig.text));
+          }
           inv.onSignal(sig);
         },
       });
@@ -87,7 +99,7 @@ function recorder(inner: AgentRunner) {
       return r;
     },
   };
-  return { runner, sessions, deniedTools };
+  return { runner, sessions, deniedTools, deniedCalls };
 }
 
 const GIT = ['-c', 'user.name=eval', '-c', 'user.email=eval@orchestrate.local', '-c', 'core.autocrlf=false'];
@@ -204,6 +216,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
     quality,
     context: contextUse(recorded.sessions),
     deniedTools: recorded.deniedTools,
+    deniedCalls: recorded.deniedCalls,
   };
 }
 
