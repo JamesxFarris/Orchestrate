@@ -167,7 +167,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions): Promise
   const start = git(repo, 'rev-parse', 'HEAD');
   const recorded = recorder(opts.runner);
   const store = new Store(':memory:');
-  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model, opts.budget)), runner: recorded.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
+  const orch = new Orchestrator({ org: Org.fromConfig(evalTeam(opts.model, opts.budget, scenario.team)), runner: recorded.runner, repoRoot: repo, workDir: path.join(root, 'work'), store });
   const events: OrchestrateEvent[] = [];
   orch.bus.on((e) => events.push(e));
 

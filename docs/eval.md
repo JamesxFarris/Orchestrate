@@ -26,6 +26,11 @@ Each scenario is a folder under `packages/eval/scenarios/<id>/`:
 | `duration-rules` | a bug report that lists many rules | fixing the reported example and missing the rest: the flawed fix scores 6/12 |
 | `preview-ellipsis` | a change that must not affect anything else | editing the shared `truncate()`, which silently changes untested `headline()`: 6/8 |
 | `discount-checkout` | a multi-file feature with exact rules | an exclusive expiry date or rounding down: 13/16 |
+| `horde-survivor` | a CorpseGrinder-shaped game: eight systems (waves, chase, weapon, bullets, deaths, contact, levelling, upgrade choices) plus summary and save/load, built against a written spec across Engine and Gameplay squads | losing track over a long build; later systems breaking earlier ones; save/load that re-seeds the generator (the flawed fix: whole games still run, but a loaded game drifts) |
+
+`horde-survivor` is the first **large** scenario: the kind of work Anthropic's harness article says a single session struggles with (see [the large-project direction](roadmap.md#direction-large-projects)). Its starting repo has the game loop already calling every system in a fixed order, each system an empty stub in its own module, and the full rules in `docs/spec.md`; that keeps parallel tasks off each other's files and lets QA's tests fail first. The judge has a file per system plus `game.test.js`, which plays whole scripted games: waves arrive and close in, the weapon kills and levels the player, a run left alone ends, and saving and loading mid-run changes nothing (the whole game must match an uninterrupted one exactly). Thresholds in `game.test.js` were set from the reference solution with a wide margin (checked at tick 1200, where it has 16 kills and level 3), because tiny floating-point differences between correct implementations can drift over a long run.
+
+A scenario can bring its own team in `scenario.json` (`team.squads`, `team.maxRunUsd`); `horde-survivor` mirrors CorpseGrinder's Engine and Gameplay squads and raises the budget team's $2 cap to $8.
 
 Every rule a judge test checks is stated in the request, so neither side is marked down for something it wasn't told. Each of the last three has a `flawed/` fix that passes the repo's own tests but not the judge, so the scenario can tell careful work from a plausible shortcut.
 
@@ -126,6 +131,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: the large horde-survivor scenario, and per-scenario teams. Branch eval/game-scenario.
 - 2026-10-18: refused calls are recorded ("Bash npm test"), and the scorecard lists the most common. Branch eval/refused-calls.
 - 2026-10-18: first real comparison on the three harder scenarios, 3 runs each (results above). Branch docs/first-comparison.
 - 2026-10-18: measures beyond correctness (regressions, scope, lines changed, tests left behind, peak context, tokens, refusals by tool). The core runner now records each session's tokens and peak context. Branch eval/richer-measures.

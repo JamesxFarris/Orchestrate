@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Plan } from '@orchestrate/shared';
+import type { ScenarioTeam } from './team.ts';
 
 /**
  * A scenario is a folder under packages/eval/scenarios/<id>/:
@@ -20,6 +21,8 @@ export interface Scenario {
   plan: Plan;
   /** Planned test file -> hidden judge test the scripted QA writes there. */
   reference: Record<string, string>;
+  /** Optional: the scenario's own squads and usage cap; without it, the default core + api team. */
+  team?: ScenarioTeam;
   dir: string;
 }
 

@@ -3,7 +3,7 @@ import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { filesIn } from '../src/scenario.ts';
-import { comparison, contextUse, htmlReport, loadScenarios, refusedCalls, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
+import { comparison, contextUse, evalTeam, htmlReport, loadScenarios, refusedCalls, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
  * These tests drive real git in temp folders while other test files do the same in parallel. On
@@ -197,5 +197,16 @@ describe('measures beyond correctness (free)', REAL_GIT, () => {
       {},
     ]);
     expect(c).toEqual({ sessions: 3, peak: 300, tokens: { input: 11, output: 7, cacheRead: 103, cacheWrite: 24 }, total: 145 });
+  });
+});
+
+describe('a scenario can bring its own team', () => {
+  it('gives every squad a lead, a developer and QA, and can raise the usage cap', () => {
+    const squads = [{ id: 'engine', name: 'Engine', mission: 'm', owns: ['src/core/**'], testDirs: ['test/core/**'], color: '#000000' }];
+    const team = evalTeam('m', true, { squads, maxRunUsd: 8 });
+    expect(team.roles.map((r) => r.id)).toEqual(['vp', 'architect', 'engine-lead', 'engine-dev', 'engine-qa']);
+    expect(team.policy?.maxRunUsd).toBe(8);
+    expect(evalTeam('m', true).policy?.maxRunUsd).toBe(2);
+    expect(evalTeam('m').squads.map((s) => s.id)).toEqual(['core', 'api']);
   });
 });
