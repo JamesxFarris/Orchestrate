@@ -21,7 +21,7 @@ On small, fully specified tasks Claude alone matched Orchestrate at a quarter of
 
 1. A large eval scenario: `horde-survivor`, a CorpseGrinder-shaped game. Done.
 2. Record which calls the guard refuses. Done.
-3. Run the large comparison (live; estimate and ask first).
+3. Run the large comparison. Done: Claude alone still won (3/3 vs 2/3, a tenth of the usage), because a 200-line game isn't large for the model; and the guard refused about 22 shell calls per run (see [eval.md](eval.md)).
 4. Change the harness the article's way, one piece at a time, measuring each: an evaluator that runs the app and its end-to-end checks, a higher-level planner spec, and a team that scales to the task (small requests skip the Tech Circle and separate QA).
 
 ## Next

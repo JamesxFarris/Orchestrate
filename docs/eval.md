@@ -122,7 +122,25 @@ What it means:
 
 The first smoke test found a harness bug rather than a result: Orchestrate scored 0/10 because the scope guard refused the `StructuredOutput` tool, so the planner could never hand in its plan. No earlier live test covered a job that answers with structured output. After the fix, both sides solve the easy scenario; Orchestrate took about 2.4x the usage and 7x the time. Orchestrate also hit 4 guard refusals; which tools they were isn't saved in the report yet.
 
-## Known limits
+**The large scenario (horde-survivor, `--budget`, 3 passes, commit 09b9a23):**
+
+| | Orchestrate | Claude alone |
+|---|---|---|
+| Runs fully correct | 2/3 (104/117 judge tests) | 3/3 (117/117) |
+| Usage per run | $1.98 | $0.19 |
+| Time per run | 559s | 33s |
+| Existing tests still passing | 18/18 | 18/18 |
+| Code lines changed | 188 | 216 |
+| Tests left behind | 74 | 1 |
+| Agent sessions | 31 | 1 |
+| Largest context in one session | 45k tokens | 49k tokens |
+| Tokens over all sessions | 4.3M | 191k |
+| Refused tool calls (total) | 66 (65 Bash) | 0 |
+
+- **Still not large for the model.** The whole game is about 200 lines, and Claude alone used a quarter of its context at most (49k). That's far from the article's regime (hours of work, thousands of lines). Orchestrate's small-context advantage can't appear until one session would otherwise fill its window; every Orchestrate session already starts around 20k+ tokens of Claude Code's own prompt and tools plus the spec.
+- **The failed run** had one task escalate (4 of 6 merged), so whole systems were missing (26/39).
+- **The guard is the biggest friction: about 22 refused shell calls per run.** The agents reach for ordinary shell habits: output filters on test runs (`node --test x.test.js 2>&1 | tail -12`), chained look-arounds (`ls ...; cat ...; grep ...`), `git diff --stat main` (a branch name, which the read-only git rules leave out), running a whole test folder (`node --test test/core/`), and quick `node -e` experiments. Each refusal is a wasted turn and a confused agent. Three cheap fixes: tell agents the allowed commands up front, accept harmless output filters on allowlisted commands, and allow the base branch in read-only git.
+- Spend for the three passes: $6.52 in total.
 
 - **The first three scenarios are small**, so they'll mostly show cost differences. The last three are where an accuracy gap, if there is one, should appear. Six scenarios is still a small sample.
 - **Windows file locks.** Under parallel test load, git sometimes fails with "Permission denied" writing into `.git/objects` in the temp folder (antivirus or the indexer holding a new file). Seen in 2 of 6 full test runs once the baseline tests were added, never on `main` before them. The real-git eval suites retry once. Orchestrate's own git calls during a real run could hit the same race; a retry on that error in `packages/core/src/git/git.ts` would be the product-level fix (not done).
@@ -131,6 +149,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-19: the large comparison, horde-survivor x3 (results above). Branch docs/large-comparison.
 - 2026-10-18: on a scenario with its own cap, Claude alone gets the same dollars and 250 turns. Branch eval/solo-large-limits.
 - 2026-10-18: the large horde-survivor scenario, and per-scenario teams. Branch eval/game-scenario.
 - 2026-10-18: refused calls are recorded ("Bash npm test"), and the scorecard lists the most common. Branch eval/refused-calls.
