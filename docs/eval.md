@@ -67,7 +67,7 @@ Kept the same on both sides, so the gap is the harness and nothing else:
 - web tools off;
 - credentials scrubbed from the commands agents run.
 
-The solo session runs with `acceptEdits`; file tools are confined to the scenario repo. Its Bash is allowed, like a user approving commands in Claude Code. It may use up to 60 turns and $3, roughly what the team spends on a whole run.
+The solo session runs with `acceptEdits`; file tools are confined to the scenario repo. Its Bash is allowed, like a user approving commands in Claude Code. It may use up to 60 turns and $3, roughly what the team spends on a whole run. On a scenario with its own usage cap (a large build such as `horde-survivor`), it gets the same dollars as the team and 250 turns, so it never loses for having a smaller allowance.
 
 ## Running it
 
@@ -131,6 +131,7 @@ The first smoke test found a harness bug rather than a result: Orchestrate score
 ## Change log
 
 - 2026-10-17: the bench, three scenarios, the scorecard (harness/evals).
+- 2026-10-18: on a scenario with its own cap, Claude alone gets the same dollars and 250 turns. Branch eval/solo-large-limits.
 - 2026-10-18: the large horde-survivor scenario, and per-scenario teams. Branch eval/game-scenario.
 - 2026-10-18: refused calls are recorded ("Bash npm test"), and the scorecard lists the most common. Branch eval/refused-calls.
 - 2026-10-18: first real comparison on the three harder scenarios, 3 runs each (results above). Branch docs/first-comparison.

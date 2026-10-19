@@ -35,6 +35,17 @@ export type SoloRunner = (s: SoloSession) => Promise<SoloOutcome>;
 /** Turns and dollars one solo session may use: roughly what the team spends on a whole run. */
 const SOLO_MAX_TURNS = 60;
 const SOLO_MAX_BUDGET_USD = 3;
+/** Turns for a scenario with its own usage cap (a large build): enough that turns never run out before dollars do. */
+const SOLO_LARGE_MAX_TURNS = 250;
+
+/**
+ * The solo session's limits. A scenario that raises the team's usage cap gives Claude alone the
+ * same dollars, so a large build isn't lost to a smaller allowance.
+ */
+export function soloLimits(scenario: Scenario): { maxTurns: number; maxBudgetUsd: number } {
+  const cap = scenario.team?.maxRunUsd;
+  return cap ? { maxTurns: SOLO_LARGE_MAX_TURNS, maxBudgetUsd: cap } : { maxTurns: SOLO_MAX_TURNS, maxBudgetUsd: SOLO_MAX_BUDGET_USD };
+}
 
 const insideRepo = (repo: string, p: unknown) => {
   if (typeof p !== 'string') return true; // tools without a path (Bash, Grep with no path) run in cwd
@@ -48,7 +59,7 @@ const insideRepo = (repo: string, p: unknown) => {
  * (the team has none), credentials scrubbed from the commands it runs, and file tools confined to
  * the scenario repo.
  */
-export const sdkSolo: SoloRunner = async ({ repo, model, prompt }) => {
+export const sdkSolo: SoloRunner = async ({ scenario, repo, model, prompt }) => {
   const outcome: SoloOutcome = { ok: false, costUsd: 0, turns: 0, peakContext: 0, deniedTools: {} };
   try {
     const session = query({
@@ -56,8 +67,7 @@ export const sdkSolo: SoloRunner = async ({ repo, model, prompt }) => {
       options: {
         cwd: repo,
         model,
-        maxTurns: SOLO_MAX_TURNS,
-        maxBudgetUsd: SOLO_MAX_BUDGET_USD,
+        ...soloLimits(scenario),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         disallowedTools: ['WebFetch', 'WebSearch'],
         permissionMode: 'acceptEdits',
