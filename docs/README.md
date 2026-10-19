@@ -42,6 +42,7 @@ What this makes easy, what it makes hard, and what to watch.
 
 ## Index
 
+- [Handoff](handoff.md): where things stand and where to pick up
 - [Roadmap](roadmap.md)
 - [Eval bench](eval.md): scoring the harness, and comparing it with Claude alone
 - Decisions
