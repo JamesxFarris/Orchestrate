@@ -3,7 +3,7 @@ import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { filesIn } from '../src/scenario.ts';
-import { comparison, contextUse, evalTeam, htmlReport, loadScenarios, refusedCalls, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
+import { comparison, contextUse, evalTeam, htmlReport, loadScenarios, refusedCalls, soloLimits, runScenario, runSolo, scorecard, scriptedSolo, scriptedTeam, soloModel, summarize, totals, verdict, type ScenarioResult } from '../src/index.ts';
 
 /**
  * These tests drive real git in temp folders while other test files do the same in parallel. On
@@ -208,5 +208,13 @@ describe('a scenario can bring its own team', () => {
     expect(team.policy?.maxRunUsd).toBe(8);
     expect(evalTeam('m', true).policy?.maxRunUsd).toBe(2);
     expect(evalTeam('m').squads.map((s) => s.id)).toEqual(['core', 'api']);
+  });
+});
+
+describe('fair limits for Claude alone', () => {
+  it('gets the same dollars as the team on a large scenario, and turns to match', () => {
+    const scenarios = loadScenarios();
+    expect(soloLimits(scenarios.find((s) => s.id === 'horde-survivor')!)).toEqual({ maxTurns: 250, maxBudgetUsd: 8 });
+    expect(soloLimits(scenarios.find((s) => s.id === 'slugify')!)).toEqual({ maxTurns: 60, maxBudgetUsd: 3 });
   });
 });
